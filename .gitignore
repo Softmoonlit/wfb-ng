@@ -28,3 +28,4 @@ tests/*_test
 !/.claude/settings.json
 !/.claude/settings.local.json
 !/.claude/worktrees/
+.worktrees/
