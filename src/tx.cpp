@@ -648,9 +648,35 @@ void Transmitter::send_session_key(void)
     inject_packet((uint8_t*)session_packet, session_packet_size);
 }
 
-bool Transmitter::send_packet(const uint8_t *buf, size_t size, uint8_t flags)
+bool Transmitter::send_packet(const uint8_t *buf, size_t size, uint8_t flags, bool bypass_fec)
 {
     assert(size <= MAX_PAYLOAD_SIZE);
+
+    // 如果 bypass_fec=true，跳过 FEC 编码，直接注入数据包（控制帧路径）
+    // 控制帧跳过 FEC 编码逻辑，避免延迟积压（per P1-6）
+    if (bypass_fec) {
+        // 控制帧快速路径：仅封装加密，跳过 FEC 编码
+        wpacket_hdr_t *packet_hdr = (wpacket_hdr_t*)block[0];
+
+        packet_hdr->flags = flags;
+        packet_hdr->packet_size = htobe16(size);
+
+        if(size > 0)
+        {
+            assert(buf != NULL);
+            memcpy(block[0] + sizeof(wpacket_hdr_t), buf, size);
+        }
+
+        memset(block[0] + sizeof(wpacket_hdr_t) + size, '\0', MAX_FEC_PAYLOAD - (sizeof(wpacket_hdr_t) + size));
+
+        // 控制帧标记
+        set_mark(0);
+
+        // 直接发送数据块片段，跳过 FEC 编码
+        send_block_fragment(sizeof(wpacket_hdr_t) + size);
+
+        return true;
+    }
 
     // FEC-only packets are only for closing already opened blocks
     if (fragment_idx == 0 && (flags & WFB_PACKET_FEC_ONLY))

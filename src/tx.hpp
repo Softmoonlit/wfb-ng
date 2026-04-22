@@ -74,7 +74,9 @@ class Transmitter
 public:
     Transmitter(int k, int n, const std::string &keypair, uint64_t epoch, uint32_t channel_id, uint32_t fec_delay, std::vector<tags_item_t> &tags);
     virtual ~Transmitter();
-    bool send_packet(const uint8_t *buf, size_t size, uint8_t flags);
+    // 添加 bypass_fec 参数（默认 false，保持向后兼容）
+    // 控制帧使用 bypass_fec=true 跳过 FEC 编码，避免延迟积压
+    bool send_packet(const uint8_t *buf, size_t size, uint8_t flags, bool bypass_fec = false);
     void send_session_key(void);
     void init_session(int k, int n);
     void get_fec(int &k, int &n) { k = fec_k; n = fec_n; }
