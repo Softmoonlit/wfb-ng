@@ -72,9 +72,18 @@ wfb_tun: src/wfb_tun.o
 wfb_rtsp: src/rtsp_server.c
 	$(CC) $(_CFLAGS) $(shell pkg-config --cflags gstreamer-rtsp-server-1.0) -o $@ $^ $(LDFLAGS) $(shell pkg-config --libs gstreamer-rtsp-server-1.0)
 
-test: all_bin fec_test libsodium_test
+# 集成测试
+integration_test: tests/integration_test.cpp src/server_scheduler.cpp src/aq_sq_manager.cpp src/breathing_cycle.cpp src/mac_token.cpp src/guard_interval.cpp
+	$(CXX) $(_CFLAGS) -std=gnu++11 -o $@ $^ -lpthread
+
+# 运行集成测试
+run_integration_test: integration_test
+	./integration_test
+
+test: all_bin fec_test libsodium_test integration_test
 	./fec_test
 	./libsodium_test
+	./integration_test
 	PYTHONPATH=`pwd` $(PYTHON) -m twisted.trial wfb_ng.tests
 
 rpm:  all_bin wfb_rtsp $(ENV)
