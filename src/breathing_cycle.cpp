@@ -1,6 +1,5 @@
 #include "breathing_cycle.h"
 #include "guard_interval.h"
-#include <iostream>
 
 // 更新呼吸周期状态，返回当前相位（per SCHED-12）
 // 根据时间流逝自动切换相位：
@@ -8,8 +7,10 @@
 // - INHALE 持续 200ms 后切换到 EXHALE
 BreathingPhase BreathingCycle::update(uint64_t current_time_ms) {
     // 初始化：首次调用记录开始时间
-    if (phase_start_ms == 0) {
+    if (!initialized) {
         phase_start_ms = current_time_ms;
+        initialized = true;
+        return current_phase;
     }
 
     uint64_t elapsed = current_time_ms - phase_start_ms;

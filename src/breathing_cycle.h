@@ -16,6 +16,7 @@ class BreathingCycle {
 private:
     BreathingPhase current_phase = BreathingPhase::EXHALE;
     uint64_t phase_start_ms = 0;         // 当前相位开始时间（CLOCK_MONOTONIC 毫秒）
+    bool initialized = false;            // 是否已初始化
     size_t num_nodes = 10;               // 节点数量
 
     // 时间常量（per SCHED-12）
