@@ -1,9 +1,9 @@
 ---
-status: complete
+status: partial
 phase: 01-base-framework
 source: 01-00-SUMMARY.md, 01-01-SUMMARY.md, 01-02-SUMMARY.md, 01-03-SUMMARY.md, 01-04-SUMMARY.md, 01-05-SUMMARY.md
 started: 2026-04-22T06:56:59Z
-updated: 2026-04-22T07:58:17Z
+updated: 2026-04-22T09:23:19Z
 ---
 
 ## Current Test
@@ -71,15 +71,21 @@ result: pass
 
 ### 15. bypass_fec=true 跳过 FEC 编码验证
 expected: 运行 tests/test_bypass_fec.cpp 中的测试。验证 bypass_fec=true 时直接注入数据包，跳过 FEC 编码逻辑。
-result: pass
+result: blocked
+blocked_by: full-build-environment
+reason: 测试依赖完整的 FEC 库、系统级网络库和项目构建宏，需要完整 Linux 构建环境
 
 ### 16. bypass_fec=false 正常 FEC 编码验证
 expected: 运行 tests/test_bypass_fec.cpp 中的测试。验证 bypass_fec=false 时执行正常 FEC 编码流程。
-result: pass
+result: blocked
+blocked_by: full-build-environment
+reason: 测试依赖完整的 FEC 库、系统级网络库和项目构建宏，需要完整 Linux 构建环境
 
 ### 17. 默认参数向后兼容验证
 expected: 验证不传 bypass_fec 参数时默认为 false，保持向后兼容性。
-result: pass
+result: blocked
+blocked_by: full-build-environment
+reason: 测试依赖完整的 FEC 库、系统级网络库和项目构建宏，需要完整 Linux 构建环境
 
 ### 18. Token 发射器接口验证
 expected: 检查 src/token_emitter.h 是否存在并包含 send_token_triple() 和 is_duplicate_token() 函数声明。
@@ -91,7 +97,9 @@ result: pass
 
 ### 20. 接收端去重函数验证
 expected: 运行 tests/test_token_emitter.cpp 中的去重测试。验证 is_duplicate_token() 函数正确识别重复序列号。
-result: pass
+result: blocked
+blocked_by: full-build-environment
+reason: 测试依赖完整的发射器环境，需要完整 Linux 构建环境
 
 ### 21. 控制帧 bypass_fec=true 使用验证
 expected: 验证 Token 发射器在发送控制帧时使用 bypass_fec=true 参数跳过 FEC 编码。
@@ -107,20 +115,24 @@ result: pass
 
 ### 24. 5ms 保护间隔精度验证
 expected: 运行 tests/test_guard_interval.cpp 中的测试。验证 5ms 保护间隔精度在 ±100μs 范围内。
-result: pass
+result: blocked
+blocked_by: linux-environment
+reason: 测试依赖 timerfd（Linux 特有 API），需要在 Linux 环境运行
 
 ### 25. 空数据包处理验证
 expected: 验证 bypass_fec 功能正确处理空数据包（FEC-only 标志）。
-result: pass
+result: blocked
+blocked_by: full-build-environment
+reason: 测试依赖完整的 FEC 库、系统级网络库和项目构建宏，需要完整 Linux 构建环境
 
 ## Summary
 
 total: 25
-passed: 25
+passed: 20
 issues: 0
 pending: 0
 skipped: 0
-blocked: 0
+blocked: 5
 
 ## Gaps
 
