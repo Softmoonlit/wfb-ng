@@ -79,14 +79,16 @@ uint16_t ServerScheduler::calculate_next_window(uint8_t node_id, uint16_t actual
 
 std::pair<uint8_t, uint16_t> ServerScheduler::get_next_node_to_serve() {
     if (!aq_sq_manager) {
-        return {0xFF, 0};  // 无效节点
+        return std::make_pair(static_cast<uint8_t>(0xFF), static_cast<uint16_t>(0));  // 无效节点
     }
 
     // 获取下一个节点（混合交织调度）
-    auto [node_id, is_from_sq] = aq_sq_manager->get_next_node(INTERLEAVE_RATIO);
+    std::pair<uint8_t, bool> next = aq_sq_manager->get_next_node(INTERLEAVE_RATIO);
+    uint8_t node_id = next.first;
+    bool is_from_sq = next.second;
 
     if (node_id == 0xFF) {
-        return {0xFF, 0};  // 无节点可服务
+        return std::make_pair(static_cast<uint8_t>(0xFF), static_cast<uint16_t>(0));  // 无节点可服务
     }
 
     uint16_t duration_ms;
@@ -103,12 +105,14 @@ std::pair<uint8_t, uint16_t> ServerScheduler::get_next_node_to_serve() {
         }
     }
 
-    return {node_id, duration_ms};
+    return std::make_pair(node_id, duration_ms);
 }
 
 void ServerScheduler::execute_scheduling_cycle() {
     // 1. 获取下一个要服务的节点
-    auto [node_id, duration_ms] = get_next_node_to_serve();
+    std::pair<uint8_t, uint16_t> next = get_next_node_to_serve();
+    uint8_t node_id = next.first;
+    uint16_t duration_ms = next.second;
 
     if (node_id == 0xFF) {
         return;  // 无节点
