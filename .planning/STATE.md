@@ -29,7 +29,7 @@
 
 **总进度**: 0/4 阶段完成 (0%)
 
-**当前焦点**: Phase 1 - 基础框架与数据结构（计划已完成，待执行）
+**当前焦点**: Phase 1 - 基础框架与数据结构（正在执行 - Plan 00 已完成）
 
 ### 需求进度
 
@@ -55,9 +55,9 @@
 **映射需求**: CTRL-01 ~ CTRL-08 (8 个需求)
 
 **工作项**:
-- [ ] 定义 TokenFrame 结构体（mac_token.h）
-- [ ] 实现序列化函数（mac_token.cpp）
-- [ ] 实现反序列化函数（mac_token.cpp）
+- [x] 定义 TokenFrame 结构体（mac_token.h）- 已存在
+- [x] 实现序列化函数（mac_token.cpp）- 已存在
+- [x] 实现反序列化函数（mac_token.cpp）- 已存在
 - [ ] 实现全局序列号生成器
 - [ ] 定义 Radiotap 模板（radiotap_template.h）
 - [ ] 实现最低 MCS 模板
@@ -66,9 +66,9 @@
 - [ ] 实现三连发击穿机制
 - [ ] 实现 5ms 保护间隔逻辑
 - [ ] 实现双模板分流发射
-- [ ] 编写单元测试（test_mac_token.cpp）
-- [ ] 验证字节对齐无填充
-- [ ] 验证序列化/反序列化正确性
+- [x] 编写单元测试（test_mac_token.cpp）- Plan 00 已完成
+- [x] 验证字节对齐无填充 - Plan 00 已完成
+- [x] 验证序列化/反序列化正确性 - Plan 00 已完成
 
 **成功标准**:
 1. TokenFrame 结构体正确定义，字节对齐无填充
@@ -275,9 +275,9 @@
 ## 活跃会话
 
 **最近会话**: 2026-04-22
-**停止位置**: Phase 1 计划已完成
+**停止位置**: Phase 1 Plan 00 已完成
 **恢复文件**: `.planning/phases/01-base-framework/PLAN.md`
-**下一步**: 运行 `/gsd-execute-phase 01` 开始执行
+**下一步**: 继续执行 Phase 1 Plan 01（全局序列号生成器）
 
 ---
 
@@ -296,6 +296,11 @@
 - 定义 v1 需求 (`.planning/REQUIREMENTS.md`) - 51 个需求项
 - 创建路线图 (`.planning/ROADMAP.md`) - 4 个粗粒度阶段
 - 初始化项目状态 (`.planning/STATE.md`)
+- 完成 Phase 1 Plan 00: TokenFrame 验证
+  - 创建 TokenFrame 单元测试（tests/test_mac_token.cpp）
+  - 验证字节对齐和序列化/反序列化正确性
+  - 所有测试通过，提交：97cc633
+  - 创建执行摘要：01-00-SUMMARY.md
 
 ---
 
