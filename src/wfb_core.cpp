@@ -35,6 +35,12 @@ void warn_realtime_priority_failure(int priority, int err) {
 
 }  // namespace
 
+bool check_root_permission() {
+    // 检查是否以 Root 权限运行（per RT-04）
+    // SCHED_FIFO 实时调度需要 Root 权限或 CAP_SYS_NICE 能力
+    return (geteuid() == 0);
+}
+
 void set_thread_realtime_priority(int priority) {
     pthread_t self = pthread_self();
     struct sched_param params;
@@ -82,7 +88,13 @@ void tun_reader_main_loop(ThreadSharedState* shared_state) {
     shared_state->packet_queue.push(static_cast<uint8_t>(dynamic_limit & 0xff));
 }
 
+#ifndef TEST_MODE
 int main() {
+    // 启动时检查 Root 权限（per RT-04）
+    if (!check_root_permission()) {
+        std::cerr << "警告: 未以 Root 权限运行，实时调度可能失败" << std::endl;
+    }
+
     ThreadSharedState shared_state;
 
     control_main_loop(&shared_state);
@@ -91,3 +103,4 @@ int main() {
 
     return 0;
 }
+#endif

@@ -60,11 +60,22 @@ void test_guard_interval_constant() {
     assert(kGuardIntervalMs <= 10);
 }
 
+void test_root_permission_detection() {
+    // 测试 Root 权限检测函数（per RT-04）
+    // 注意：此测试在不同环境下会有不同结果
+    bool is_root = check_root_permission();
+
+    // 仅验证函数可调用，不强制要求特定结果
+    // 实际运行时应在启动阶段检查并给出告警
+    (void)is_root;  // 避免未使用变量警告
+}
+
 int main() {
     test_shared_state_defaults();
     test_priority_constants();
     test_token_gate_logic();
     test_dynamic_watermark_integration();
     test_guard_interval_constant();
+    test_root_permission_detection();
     return 0;
 }
