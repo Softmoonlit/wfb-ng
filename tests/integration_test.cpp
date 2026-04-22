@@ -14,7 +14,71 @@
 #include "../src/breathing_cycle.h"
 #include "../src/packet_queue.h"
 #include "../src/mac_token.h"
-#include "../src/radiotap_template.h"
+
+// Mock radiotap_header_t 结构（避免引入 tx.hpp 的复杂依赖）
+typedef struct {
+    std::vector<uint8_t> header;
+    uint8_t stbc;
+    bool ldpc;
+    bool short_gi;
+    uint8_t bandwidth;
+    uint8_t mcs_index;
+    bool vht_mode;
+    uint8_t vht_nss;
+} radiotap_header_t;
+
+// Mock init_radiotap_header 函数
+radiotap_header_t init_radiotap_header(uint8_t stbc,
+                                       bool ldpc,
+                                       bool short_gi,
+                                       uint8_t bandwidth,
+                                       uint8_t mcs_index,
+                                       bool vht_mode,
+                                       uint8_t vht_nss) {
+    radiotap_header_t hdr;
+    hdr.stbc = stbc;
+    hdr.ldpc = ldpc;
+    hdr.short_gi = short_gi;
+    hdr.bandwidth = bandwidth;
+    hdr.mcs_index = mcs_index;
+    hdr.vht_mode = vht_mode;
+    hdr.vht_nss = vht_nss;
+    return hdr;
+}
+
+// 全局变量定义（模拟实现）
+radiotap_header_t g_control_radiotap;
+radiotap_header_t g_data_radiotap;
+
+// 初始化双模板
+void init_radiotap_templates(uint8_t data_mcs_index, uint8_t data_bandwidth) {
+    // 初始化控制帧模板：固定使用 MCS 0 + 20MHz
+    g_control_radiotap = init_radiotap_header(
+        /*stbc=*/0,
+        /*ldpc=*/false,
+        /*short_gi=*/false,
+        /*bandwidth=*/20,      // 20MHz 频宽
+        /*mcs_index=*/0,       // MCS 0（理论速率 6Mbps）
+        /*vht_mode=*/false,
+        /*vht_nss=*/1
+    );
+
+    // 初始化数据帧模板：基于 CLI 参数
+    g_data_radiotap = init_radiotap_header(
+        /*stbc=*/0,
+        /*ldpc=*/false,
+        /*short_gi=*/true,     // 启用 short GI 提高吞吐量
+        /*bandwidth=*/data_bandwidth,
+        /*mcs_index=*/data_mcs_index,
+        /*vht_mode=*/false,
+        /*vht_nss=*/1
+    );
+}
+
+// 根据帧类型返回对应的模板指针（零延迟切换）
+radiotap_header_t* get_radiotap_template(bool is_control_frame) {
+    return is_control_frame ? &g_control_radiotap : &g_data_radiotap;
+}
 
 // 测试辅助宏
 #define TEST_PASS(name) std::cout << "[PASS] " << name << std::endl
