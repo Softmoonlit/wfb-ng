@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <map>
 #include <algorithm>
+#include <utility>  // for std::pair
 
 // 三态状态枚举（per SCHED-01）
 enum class NodeStateEnum {
@@ -21,6 +22,16 @@ private:
     const uint16_t MIN_WINDOW = 50;      // 最小授权窗口
     const uint16_t STEP_UP = 100;        // 状态 III 扩窗步长
     const uint16_t ELASTIC_MARGIN = 50;  // 状态 II 弹性边界
+
+    // 空闲巡逻常量（per SCHED-09）
+    static constexpr uint16_t IDLE_PATROL_INTERVAL_MS = 100;  // 空闲巡逻间隔
+    static constexpr uint16_t MICRO_PROBE_DURATION_MS = 15;   // 微探询时长
+
+    // 混合交织常量（per SCHED-10）
+    static constexpr int INTERLEAVE_RATIO = 4;  // 每 4 次 AQ 服务穿插 1 次 SQ
+
+    // 时间追踪
+    uint64_t last_patrol_time_ms = 0;  // 上次巡逻时间
 
     // 节点状态结构（扩展版）
     struct NodeState {
@@ -73,4 +84,36 @@ public:
      * - 更多节点: 150ms
      */
     uint16_t get_max_window() const;
+
+    /**
+     * @brief 获取下一个要服务的节点
+     * @return std::pair<uint8_t, uint16_t> - {node_id, duration_ms}
+     *         node_id: 节点 ID（0xFF 表示无节点）
+     *         duration_ms: 授权窗口时长
+     *         - AQ 节点使用 current_window
+     *         - SQ 节点使用 MICRO_PROBE_DURATION_MS
+     *
+     * 调度策略（per SCHED-09, SCHED-10）:
+     * - AQ 为空 SQ 不空: 空闲巡逻模式，从 SQ 轮询
+     * - 混合交织: 调用 aq_sq_manager->get_next_node()
+     */
+    std::pair<uint8_t, uint16_t> get_next_node_to_serve();
+
+    /**
+     * @brief 执行调度周期
+     *
+     * 流程:
+     * 1. 获取下一个要服务的节点
+     * 2. 发射 Token（需要集成 TokenEmitter）
+     * 3. 插入保护间隔（per SCHED-13）
+     */
+    void execute_scheduling_cycle();
+
+    /**
+     * @brief 更新节点状态（收到客户端反馈后调用）
+     * @param node_id 节点 ID
+     * @param actual_used 实际使用时间（ms）
+     * @param allocated 已分配的时间（ms）
+     */
+    void update_node_state(uint8_t node_id, uint16_t actual_used, uint16_t allocated);
 };
