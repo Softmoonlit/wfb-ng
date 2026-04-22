@@ -167,6 +167,54 @@ void test_node_rotation() {
     std::cout << "[PASS] test_node_rotation" << std::endl;
 }
 
+/**
+ * 测试混合交织集成
+ * - 创建 AqSqManager
+ * - 初始化 4 节点到 AQ，1 节点到 SQ
+ * - 连续调用 get_next_node(4) 10 次
+ * - 统计 SQ 服务次数，验证约为 2 次（10/5）
+ */
+void test_interleave_integration() {
+    AqSqManager manager;
+
+    // 初始化节点 1, 2, 3, 4 到 AQ
+    manager.init_node(1);
+    manager.init_node(2);
+    manager.init_node(3);
+    manager.init_node(4);
+    manager.migrate_to_aq(1);
+    manager.migrate_to_aq(2);
+    manager.migrate_to_aq(3);
+    manager.migrate_to_aq(4);
+
+    // 初始化节点 5 到 SQ
+    manager.init_node(5);
+    assert(manager.aq_size() == 4);
+    assert(manager.sq_size() == 1);
+
+    // 连续调用 get_next_node(4) 10 次
+    // 每 4 次 AQ 服务穿插 1 次 SQ
+    // 预期：SQ 服务次数约为 2 次（10/5）
+    int sq_count = 0;
+    int aq_count = 0;
+
+    for (int i = 0; i < 10; i++) {
+        auto result = manager.get_next_node(4);
+        if (result.second) {
+            sq_count++;
+        } else {
+            aq_count++;
+        }
+    }
+
+    // 验证 SQ 服务次数约为 2 次
+    // 实际：前 4 次 AQ，第 5 次 SQ，再 4 次 AQ，第 10 次 SQ
+    assert(sq_count == 2);
+    assert(aq_count == 8);
+
+    std::cout << "[PASS] test_interleave_integration" << std::endl;
+}
+
 int main() {
     std::cout << "=== AQ/SQ Manager Tests ===" << std::endl;
 
@@ -178,6 +226,7 @@ int main() {
     test_get_next_node_idle_patrol();
     test_get_next_node_interleave();
     test_node_rotation();
+    test_interleave_integration();
 
     std::cout << "=== All tests passed ===" << std::endl;
     return 0;

@@ -17,18 +17,19 @@ class AqSqManager;
 
 // 服务端核心三态状态机调度器
 class ServerScheduler {
-private:
-    // 时间参数常量（per SCHED-05, SCHED-06, SCHED-07, SCHED-08）
-    const uint16_t MIN_WINDOW = 50;      // 最小授权窗口
-    const uint16_t STEP_UP = 100;        // 状态 III 扩窗步长
-    const uint16_t ELASTIC_MARGIN = 50;  // 状态 II 弹性边界
-
+public:
     // 空闲巡逻常量（per SCHED-09）
     static constexpr uint16_t IDLE_PATROL_INTERVAL_MS = 100;  // 空闲巡逻间隔
     static constexpr uint16_t MICRO_PROBE_DURATION_MS = 15;   // 微探询时长
 
     // 混合交织常量（per SCHED-10）
     static constexpr int INTERLEAVE_RATIO = 4;  // 每 4 次 AQ 服务穿插 1 次 SQ
+
+private:
+    // 时间参数常量（per SCHED-05, SCHED-06, SCHED-07, SCHED-08）
+    const uint16_t MIN_WINDOW = 50;      // 最小授权窗口
+    const uint16_t STEP_UP = 100;        // 状态 III 扩窗步长
+    const uint16_t ELASTIC_MARGIN = 50;  // 状态 II 弹性边界
 
     // 时间追踪
     uint64_t last_patrol_time_ms = 0;  // 上次巡逻时间

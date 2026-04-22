@@ -225,6 +225,93 @@ void test_aq_sq_migration() {
     TEST_PASS("test_aq_sq_migration");
 }
 
+/**
+ * 测试空闲巡逻常量
+ * - IDLE_PATROL_INTERVAL_MS == 100
+ * - MICRO_PROBE_DURATION_MS == 15
+ * - INTERLEAVE_RATIO == 4
+ */
+void test_idle_patrol_constants() {
+    assert(ServerScheduler::IDLE_PATROL_INTERVAL_MS == 100);
+    assert(ServerScheduler::MICRO_PROBE_DURATION_MS == 15);
+    assert(ServerScheduler::INTERLEAVE_RATIO == 4);
+    TEST_PASS("test_idle_patrol_constants");
+}
+
+/**
+ * 测试 get_next_node_to_serve
+ * - 创建 ServerScheduler 和 AqSqManager
+ * - 初始化节点 1, 2 到 AQ
+ * - 调用 get_next_node_to_serve()
+ * - 验证返回节点在 AQ 中
+ * - 验证 duration_ms 使用 current_window
+ */
+void test_get_next_node_to_serve() {
+    ServerScheduler scheduler;
+    AqSqManager manager;
+    scheduler.set_aq_sq_manager(&manager);
+    scheduler.set_num_nodes(10);
+
+    // 初始化节点 1, 2 并迁移到 AQ
+    manager.init_node(1);
+    manager.init_node(2);
+    manager.migrate_to_aq(1);
+    manager.migrate_to_aq(2);
+
+    // 初始化节点状态
+    scheduler.init_node(1);
+    scheduler.init_node(2);
+
+    // 设置节点 1 的 current_window 为 150ms
+    scheduler.calculate_next_window(1, 100, 100);  // 扩窗到 200ms
+
+    // 获取下一个节点
+    auto result = scheduler.get_next_node_to_serve();
+
+    // 验证返回有效节点
+    assert(result.first != 0xFF);
+    assert(result.first == 1 || result.first == 2);
+
+    // 验证 duration_ms 使用 current_window（AQ 节点）
+    // 节点 1: current_window = 200ms, 节点 2: current_window = 50ms (默认)
+    assert(result.second >= 50);  // 至少是 MIN_WINDOW
+
+    TEST_PASS("test_get_next_node_to_serve");
+}
+
+/**
+ * 测试 SQ 节点使用微探询时长
+ * - 创建 ServerScheduler 和 AqSqManager
+ * - 初始化节点 1 到 SQ（AQ 为空）
+ * - 调用 get_next_node_to_serve()
+ * - 验证 duration_ms == MICRO_PROBE_DURATION_MS (15ms)
+ */
+void test_micro_probe_for_sq() {
+    ServerScheduler scheduler;
+    AqSqManager manager;
+    scheduler.set_aq_sq_manager(&manager);
+    scheduler.set_num_nodes(10);
+
+    // 初始化节点 1 到 SQ（AQ 为空）
+    manager.init_node(1);
+    assert(manager.is_aq_empty());
+    assert(manager.sq_size() == 1);
+
+    // 初始化节点状态
+    scheduler.init_node(1);
+
+    // 获取下一个节点（应当从 SQ 获取，空闲巡逻模式）
+    auto result = scheduler.get_next_node_to_serve();
+
+    // 验证返回节点 1
+    assert(result.first == 1);
+
+    // 验证 duration_ms == MICRO_PROBE_DURATION_MS (15ms)
+    assert(result.second == 15);
+
+    TEST_PASS("test_micro_probe_for_sq");
+}
+
 int main() {
     std::cout << "=== ServerScheduler 三态状态机测试 ===" << std::endl;
 
@@ -235,6 +322,9 @@ int main() {
     test_max_window_dynamic();
     test_state_transition_sequence();
     test_aq_sq_migration();
+    test_idle_patrol_constants();
+    test_get_next_node_to_serve();
+    test_micro_probe_for_sq();
 
     std::cout << std::endl << "=== 所有测试通过 ===" << std::endl;
     return 0;
