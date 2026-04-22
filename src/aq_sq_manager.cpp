@@ -2,6 +2,10 @@
 
 #include <algorithm>
 
+// 静态常量定义（C++11 需要）
+constexpr uint8_t AqSqManager::INVALID_NODE;
+constexpr int AqSqManager::DEFAULT_INTERLEAVE_RATIO;
+
 void AqSqManager::init_node(uint8_t node_id) {
     std::lock_guard<std::mutex> lock(mtx);
 
