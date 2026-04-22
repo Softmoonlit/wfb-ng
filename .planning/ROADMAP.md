@@ -14,7 +14,7 @@
 ## 阶段概览
 
 | # | 阶段名称 | 目标 | 需求映射 | 成功标准 | 状态 |
-|---|---------|------|----------|------|
+|---|---------|------|----------|------|------|
 | 1 | 基础框架与数据结构 | 建立 Token Passing 的核心数据结构和基础工具 | CTRL-01 ~ CTRL-08 (8) | 4 | ○ |
 | 2 | 进程架构与实时调度 | 构建单进程架构，实现控制/数据面分流和实时调度 | BUFFER-01 ~ BUFFER-10, PROC-01 ~ PROC-12, RT-01 ~ RT-08 (30) | 4 | ✓ |
 | 3 | 服务端调度引擎 | 实现三态状态机调度器、空闲巡逻、混合交织、呼吸周期 | SCHED-01 ~ SCHED-14 (14) | 4 | ○ |
@@ -41,7 +41,7 @@
 **成功标准**:
 1. TokenFrame 结构体正确定义，字节对齐无填充
 2. 序列化/反序列化函数通过单元测试，验证字节正确性
-3. 序列号生成器线程安全，全局单调递增
+3. 序列号生成器线程安全，全球单调递增
 4. Radiotap 模板正确封装最低 MCS 速率
 5. 控制帧发射路径跳过 FEC 编码逻辑
 6. 三连发机制实现，接收端序列号去重正常
@@ -53,7 +53,7 @@
 Plans:
 - [x] 01-00-PLAN.md — 验证 TokenFrame 实现正确性 ✅
 - [ ] 01-01-PLAN.md — 实现 Radiotap 双模板分流系统
-- [ ] 01-02-PLAN.md — 实现全局单调递增序列号生成器
+- [ ] 01-02-PLAN.md — 实现全球单调递增序列号生成器
 - [ ] 01-03-PLAN.md — 修改 send_packet 支持 bypass_fec 参数
 - [ ] 01-04-PLAN.md — 实现 Token 三连发发射器
 - [ ] 01-05-PLAN.md — 实现高精度保护间隔函数
@@ -120,12 +120,24 @@ Plans:
 13. 状态机跃迁日志记录完整，便于调试
 14. 集群测试显示无碰撞，吞吐量 > 90%，频谱占用 < 15%
 
+**Plans:** 4 plans in 2 waves
+
+Plans:
+- [ ] 03-01-PLAN.md — AQ/SQ 双队列管理器（SCHED-10, SCHED-11）
+- [ ] 03-02-PLAN.md — 三态状态机扩展与 Watchdog 保护（SCHED-01~08）
+- [ ] 03-03-PLAN.md — 下行呼吸周期实现（SCHED-12）
+- [ ] 03-04-PLAN.md — 空闲巡逻与混合交织调度集成（SCHED-09, SCHED-13, SCHED-14）
+
 **输出**:
 - `src/server_scheduler.h` - 服务端调度器接口
 - `src/server_scheduler.cpp` - 三态状态机实现
-- `src/queues.h` - AQ/SQ 双队列管理
+- `src/aq_sq_manager.h` - AQ/SQ 双队列管理接口
+- `src/aq_sq_manager.cpp` - 队列管理实现
+- `src/breathing_cycle.h` - 呼吸周期接口
+- `src/breathing_cycle.cpp` - 呼吸周期实现
 - `tests/test_scheduler.cpp` - 调度器单元测试
-- `scripts/server_daemon.sh` - 服务端守护进程启动脚本
+- `tests/test_aq_sq.cpp` - 队列管理单元测试
+- `tests/test_breathing.cpp` - 呼吸周期单元测试
 
 ---
 
@@ -209,7 +221,7 @@ Phase 4 (集成优化)
 - Phase 3 所有成功标准达成
 
 **验证方法**:
-- 单元测试全部通过（test_scheduler）
+- 单元测试全部通过（test_scheduler, test_aq_sq, test_breathing）
 - 模拟测试验证三态状态机跃迁正确
 - 集群测试验证 AQ/SQ 调度无碰撞
 - 长时间运行测试验证无内存泄漏
