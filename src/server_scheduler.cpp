@@ -1,6 +1,8 @@
 // src/server_scheduler.cpp
 #include "server_scheduler.h"
 #include "aq_sq_manager.h"
+#include "guard_interval.h"
+#include "threads.h"  // for kGuardIntervalMs
 
 void ServerScheduler::init_node(uint8_t node_id) {
     nodes[node_id] = NodeState{};
@@ -73,4 +75,57 @@ uint16_t ServerScheduler::calculate_next_window(uint8_t node_id, uint16_t actual
         aq_sq_manager->migrate_to_aq(node_id);
     }
     return state.current_window;
+}
+
+std::pair<uint8_t, uint16_t> ServerScheduler::get_next_node_to_serve() {
+    if (!aq_sq_manager) {
+        return {0xFF, 0};  // 无效节点
+    }
+
+    // 获取下一个节点（混合交织调度）
+    auto [node_id, is_from_sq] = aq_sq_manager->get_next_node(INTERLEAVE_RATIO);
+
+    if (node_id == 0xFF) {
+        return {0xFF, 0};  // 无节点可服务
+    }
+
+    uint16_t duration_ms;
+    if (is_from_sq) {
+        // SQ 节点：使用微探询时长（per SCHED-09）
+        duration_ms = MICRO_PROBE_DURATION_MS;
+    } else {
+        // AQ 节点：使用当前授权窗口
+        auto it = nodes.find(node_id);
+        if (it != nodes.end()) {
+            duration_ms = it->second.current_window;
+        } else {
+            duration_ms = MIN_WINDOW;
+        }
+    }
+
+    return {node_id, duration_ms};
+}
+
+void ServerScheduler::execute_scheduling_cycle() {
+    // 1. 获取下一个要服务的节点
+    auto [node_id, duration_ms] = get_next_node_to_serve();
+
+    if (node_id == 0xFF) {
+        return;  // 无节点
+    }
+
+    // 2. 发射 Token（需要集成 TokenEmitter）
+    // token_emitter->send_token_triple(transmitter, node_id, duration_ms);
+
+    // 3. 插入保护间隔（per SCHED-13, 使用 timerfd + 短自旋）
+    apply_guard_interval(kGuardIntervalMs);
+}
+
+void ServerScheduler::update_node_state(uint8_t node_id, uint16_t actual_used, uint16_t allocated) {
+    // 调用 calculate_next_window 更新状态
+    uint16_t next_window = calculate_next_window(node_id, actual_used, allocated);
+
+    // 日志记录（可选）
+    // printf("Node %d: actual=%d, allocated=%d, next=%d\n",
+    //        node_id, actual_used, allocated, next_window);
 }
