@@ -1,34 +1,76 @@
 // src/server_scheduler.cpp
 #include "server_scheduler.h"
+#include "aq_sq_manager.h"
 
 void ServerScheduler::init_node(uint8_t node_id) {
     nodes[node_id] = NodeState{};
 }
 
+void ServerScheduler::set_aq_sq_manager(AqSqManager* manager) {
+    aq_sq_manager = manager;
+}
+
+void ServerScheduler::set_num_nodes(size_t n) {
+    num_nodes = n;
+}
+
+uint16_t ServerScheduler::get_max_window() const {
+    // 动态计算 MAX_WINDOW（per SCHED-06）
+    // 确保 (N-1) × MAX_WINDOW < UFTP GRTT（假设 5000ms）
+    if (num_nodes <= 5) return 600;   // 5 节点及以下
+    if (num_nodes <= 10) return 300;  // 10 节点及以下
+    return 150;                        // 更多节点进一步减小
+}
+
 uint16_t ServerScheduler::calculate_next_window(uint8_t node_id, uint16_t actual_used, uint16_t allocated) {
     auto& state = nodes[node_id];
+    uint16_t max_window = get_max_window();
 
-    // 状态 I：极速枯竭与睡眠 (Zero-Payload Drop)
+    // 状态 I：极速枯竭与睡眠 (Zero-Payload Drop, < 5ms)
+    // Watchdog 保护：连续 3 次静默才判定断流（per SCHED-02）
     if (actual_used < 5) {
         state.silence_count++;
         if (state.silence_count >= 3) {
+            // 连续 3 次静默，判定断流
+            state.current_state = NodeStateEnum::STATE_I;
+            state.current_window = MIN_WINDOW;
             state.in_aq = false;
-            return MIN_WINDOW; // 连续3次静默，断流退避
+            // 迁移到 SQ（睡眠队列）
+            if (aq_sq_manager) {
+                aq_sq_manager->migrate_to_sq(node_id);
+            }
+            return MIN_WINDOW;
         }
-        return allocated; // Watchdog 保护：保持原有时隙
+        // Watchdog 保护：保持原窗口，不立即降级
+        return allocated;
     }
 
+    // 有活动，重置静默计数
     state.silence_count = 0;
-    state.in_aq = true;
 
-    // 状态 III：高负载贪突发 (Additive Increase)
+    // 状态 III：高负载贪突发 (Additive Increase, t >= allocated)
+    // 使用公式 min(MAX, allocated + STEP)（per SCHED-04）
     if (actual_used >= allocated) {
+        state.current_state = NodeStateEnum::STATE_III;
         uint16_t target = allocated + STEP_UP;
-        return std::min(target, MAX_WINDOW);
+        state.current_window = std::min(target, max_window);
+        state.in_aq = true;
+        // 确保在 AQ（活跃队列）中
+        if (aq_sq_manager) {
+            aq_sq_manager->migrate_to_aq(node_id);
+        }
+        return state.current_window;
     }
-    // 状态 II：需量拟合与退避 (Demand-Fitting)
-    else {
-        uint16_t target = actual_used + ELASTIC_MARGIN;
-        return std::max(target, MIN_WINDOW);
+
+    // 状态 II：需量拟合 (Demand-Fitting, 5ms <= t < allocated)
+    // 使用公式 max(MIN, actual + MARGIN)（per SCHED-03）
+    state.current_state = NodeStateEnum::STATE_II;
+    uint16_t target = actual_used + ELASTIC_MARGIN;
+    state.current_window = std::max(target, MIN_WINDOW);
+    state.in_aq = true;
+    // 迁移到 AQ（活跃队列）
+    if (aq_sq_manager) {
+        aq_sq_manager->migrate_to_aq(node_id);
     }
+    return state.current_window;
 }
