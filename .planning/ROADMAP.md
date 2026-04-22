@@ -48,13 +48,15 @@
 7. 保护间隔插入逻辑正确，节点切换无碰撞
 8. 双模板分流实现，发射时零延迟切换
 
-**Plans:** 4 plans
+**Plans:** 6 plans
 
 Plans:
+- [ ] 01-00-PLAN.md — 验证 TokenFrame 实现正确性
 - [ ] 01-01-PLAN.md — 实现 Radiotap 双模板分流系统
 - [ ] 01-02-PLAN.md — 实现全局单调递增序列号生成器
-- [ ] 01-03-PLAN.md — 实现控制帧三连发发射器
-- [ ] 01-04-PLAN.md — 实现高精度保护间隔函数
+- [ ] 01-03-PLAN.md — 修改 send_packet 支持 bypass_fec 参数
+- [ ] 01-04-PLAN.md — 实现 Token 三连发发射器
+- [ ] 01-05-PLAN.md — 实现高精度保护间隔函数
 
 **输出**:
 - `src/mac_token.h` - TokenFrame 结构定义
