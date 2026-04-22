@@ -21,6 +21,7 @@ wfb_ng/conf/local.cfg
 # Test output & Binaries
 tests/*.exe
 tests/*_test
+tests/performance_results.txt
 *.exe
 
 # Claude Code
