@@ -440,6 +440,16 @@ progress:
 
 ---
 
+## Accumulated Context
+
+### Pending Todos
+
+| # | Title | Area | Created | Files |
+|---|-------|------|---------|-------|
+| 1 | [禁用 wfb_tun 心跳机制避免干扰 token 调度](../todos/pending/2026-04-23-wfb-tun-token.md) | core | 2026-04-23 | 1 |
+
+---
+
 *项目状态初始化: 2026-04-22*
 *当前阶段: Phase 2 - 进程架构与实时调度（已完成）*
 *下一阶段: Phase 3 - 服务端调度引擎*
