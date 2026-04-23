@@ -448,6 +448,12 @@ progress:
 |---|-------|------|---------|-------|
 | 1 | [禁用 wfb_tun 心跳机制避免干扰 token 调度](../todos/pending/2026-04-23-wfb-tun-token.md) | core | 2026-04-23 | 1 |
 
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 260423-ohy | 记录 TUN 路由冲突问题及解决方案 | 2026-04-23 | - | [260423-ohy-tun](./quick/260423-ohy-tun/) |
+
 ---
 
 *项目状态初始化: 2026-04-22*
