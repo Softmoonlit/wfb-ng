@@ -35,7 +35,7 @@
 
 // Must be equal to common.radio_mtu !
 #define MTU 1445
-#define PING_INTERVAL_MS 500
+#define PING_INTERVAL_MS 0  // 禁用心跳，token-passing 架构下由 server 的 token 帧维持链路活跃
 
 static struct event_base *ev_base;
 static struct event *ev_ping;
