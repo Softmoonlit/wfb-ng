@@ -447,6 +447,7 @@ progress:
 | # | Title | Area | Created | Files |
 |---|-------|------|---------|-------|
 | 1 | [禁用 wfb_tun 心跳机制避免干扰 token 调度](../todos/pending/2026-04-23-wfb-tun-token.md) | core | 2026-04-23 | 1 |
+| 2 | [解决无线链路冷启动延迟问题](../todos/pending/2026-04-23-wireless-cold-start-delay.md) | network | 2026-04-23 | 1 |
 
 ### Quick Tasks Completed
 
