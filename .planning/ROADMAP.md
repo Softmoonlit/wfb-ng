@@ -4,7 +4,7 @@
 **粒度**: 粗粒度 (Coarse)
 **模式**: YOLO (自动批准)
 **执行模式**: 并行 (Parallel)
-**总阶段数**: 4
+**总阶段数**: 5
 **总需求数**: 51
 **映射需求**: 51 (100%)
 **未映射需求**: 0
@@ -18,7 +18,8 @@
 | 1 | 基础框架与数据结构 | 建立 Token Passing 的核心数据结构和基础工具 | CTRL-01 ~ CTRL-08 (8) | 4 | ✓ |
 | 2 | 进程架构与实时调度 | 构建单进程架构，实现控制/数据面分流和实时调度 | BUFFER-01 ~ BUFFER-10, PROC-01 ~ PROC-12, RT-01 ~ RT-08 (30) | 4 | ✓ |
 | 3 | 服务端调度引擎 | 实现三态状态机调度器、空闲巡逻、混合交织、呼吸周期 | SCHED-01 ~ SCHED-14 (14) | 4 | ✓ |
-| 4 | 集成与优化 | 控制帧 Radiotap 模板分流、三连发击穿、MCS 映射表集成、UFTP 配置 | APP-01 ~ APP-04 (4) | 3 | ○ |
+| 4 | 集成与优化 | 控制帧 Radiotap 模板分流、三连发击穿、MCS 映射表集成、UFTP 配置 | APP-01 ~ APP-04 (4) | 3 | ✓ |
+| 5 | 实现真正的单进程 wfb_core 架构，替换多进程方案 | 完成单进程入口，替换 wfb_tx/wfb_rx/wfb_tun 多进程方案 | PROC-01 ~ PROC-12 (补充完善) | TBD | ○ |
 
 ---
 
@@ -337,6 +338,16 @@ v1.0 发布成功当且仅当以下所有条件满足：
 6. [ ] 代码通过 Cppcheck 和 clang-tidy 静态分析
 7. [ ] 文档完整，包含架构、API、配置、运维指南
 8. [ ] UFTP 与底层集成验证通过，应用层零感知
+
+### Phase 5: 实现真正的单进程 wfb_core 架构，替换多进程方案
+
+**Goal:** [To be planned]
+**Requirements**: TBD
+**Depends on:** Phase 4
+**Plans:** 0 plans
+
+Plans:
+- [ ] TBD (run /gsd-plan-phase 5 to break down)
 
 ---
 *路线图创建: 2026-04-22*
