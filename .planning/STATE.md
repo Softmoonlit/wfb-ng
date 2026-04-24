@@ -3,7 +3,7 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: 发布就绪（Phase 4 + 全阶段）
 status: milestone_complete
-last_updated: "2026-04-22T15:45:54.385Z"
+last_updated: "2026-04-24T00:00:00.000Z"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -454,6 +454,7 @@ progress:
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 260423-ohy | 记录 TUN 路由冲突问题及解决方案 | 2026-04-23 | - | [260423-ohy-tun](./quick/260423-ohy-tun/) |
+| 260424-og3 | 整理当前 wfb-ng 系统的可测试范围和测试命令 | 2026-04-24 | - | [260424-og3-wfb-ng](./quick/260424-og3-wfb-ng/) |
 
 ---
 
