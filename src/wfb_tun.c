@@ -36,6 +36,9 @@
 // Must be equal to common.radio_mtu !
 #define MTU 1445
 #define PING_INTERVAL_MS 0  // 禁用心跳，token-passing 架构下由 server 的 token 帧维持链路活跃
+#ifndef WFB_VERSION
+#define WFB_VERSION "unknown"
+#endif
 
 static struct event_base *ev_base;
 static struct event *ev_ping;
@@ -482,8 +485,11 @@ int main (int argc, char *argv[])
     tun_fd = open_tun(tun_name, tun_addr);
     assert(tun_fd >= 0);
 
-    ev_ping = event_new(ev_base, sock_fd, EV_PERSIST, &ev_ping_cb, NULL);
-    event_add(ev_ping, &ping_tv);
+    if (PING_INTERVAL_MS > 0)
+    {
+        ev_ping = event_new(ev_base, sock_fd, EV_PERSIST, &ev_ping_cb, NULL);
+        event_add(ev_ping, &ping_tv);
+    }
 
     ev_tun_read = event_new(ev_base,
                             tun_fd,
