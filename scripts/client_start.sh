@@ -10,7 +10,8 @@ set -e
 WLAN_IFACE="${WLAN_IFACE:-wlan0}"           # 无线网卡接口
 MCS_INDEX="${MCS_INDEX:-6}"                  # MCS 索引（0-8）
 BANDWIDTH="${BANDWIDTH:-20}"                 # 频宽（MHz）
-TUN_NAME="${TUN_NAME:-tun0}"                 # TUN 设备名称
+TUN_NAME="${TUN_NAME:-tun1}"                 # TUN 设备名称
+TUN_ADDR="${TUN_ADDR:-10.5.0.2/24}"           # TUN 设备地址（客户端侧）
 SERVER_IP="${SERVER_IP:-192.168.100.1}"      # 服务器 IP
 LOG_FILE="${LOG_FILE:-/var/log/wfb-ng/client.log}"  # 日志文件路径
 BAND="${BAND:-5G}"                           # 频段（2G/5G）
@@ -180,25 +181,62 @@ start_client() {
     SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
     PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
 
-    # 检查可执行文件是否存在
-    if [[ -x "$PROJECT_ROOT/wfb_core" ]]; then
-        echo "启动主程序: $PROJECT_ROOT/wfb_core"
-        "$PROJECT_ROOT/wfb_core" \
-            --mcs "$MCS_INDEX" \
-            --bandwidth "$BANDWIDTH" \
-            --server "$SERVER_IP" \
-            --node-id "$NODE_ID" \
-            --iface "$WLAN_IFACE" \
-            --tun "$TUN_NAME" \
-            2>&1 | tee "$LOG_FILE"
-    else
-        echo "警告: 未找到 wfb_core 可执行文件" >&2
-        echo "提示: 请先编译项目或检查可执行文件路径" >&2
-        echo "预期路径: $PROJECT_ROOT/wfb_core"
-        echo ""
-        echo "请根据实际可执行文件路径调整启动命令"
+    # UDP 端口配置
+    TX_UDP_PORT="${TX_UDP_PORT:-5600}"
+    RX_UDP_PORT="${RX_UDP_PORT:-5800}"
+
+    # 检查可执行文件
+    local wfb_tx="$PROJECT_ROOT/wfb_tx"
+    local wfb_rx="$PROJECT_ROOT/wfb_rx"
+    local wfb_tun="$PROJECT_ROOT/wfb_tun"
+
+    if [[ ! -x "$wfb_tx" ]]; then
+        echo "错误: 未找到 wfb_tx 可执行文件" >&2
+        echo "预期路径: $wfb_tx" >&2
         exit 1
     fi
+
+    if [[ ! -x "$wfb_rx" ]]; then
+        echo "错误: 未找到 wfb_rx 可执行文件" >&2
+        echo "预期路径: $wfb_rx" >&2
+        exit 1
+    fi
+
+    if [[ ! -x "$wfb_tun" ]]; then
+        echo "错误: 未找到 wfb_tun 可执行文件" >&2
+        echo "预期路径: $wfb_tun" >&2
+        exit 1
+    fi
+
+    echo "使用独立进程模式："
+    echo "  - wfb_tx: 无线发射端（从 UDP $TX_UDP_PORT 读取数据）"
+    echo "  - wfb_rx: 无线接收端（转发到 UDP $RX_UDP_PORT）"
+    echo "  - wfb_tun: TUN 设备桥接（$TX_UDP_PORT -> 无线, 无线 -> $RX_UDP_PORT）"
+    echo ""
+
+    # 启动 wfb_tx（后台运行）
+    echo "启动 wfb_tx..."
+    "$wfb_tx"         -K "$PROJECT_ROOT/drone.key"         -M "$MCS_INDEX"         -B "$BANDWIDTH"         -u "$TX_UDP_PORT"         -p 1         "$WLAN_IFACE"         >> "$LOG_FILE" 2>&1 &
+    tx_pid=$!
+    echo "wfb_tx 已启动 (PID: $tx_pid)"
+
+    # 启动 wfb_rx（后台运行）
+    echo "启动 wfb_rx..."
+    "$wfb_rx"         -K "$PROJECT_ROOT/gs.key"         -p 0         -u "$RX_UDP_PORT"         "$WLAN_IFACE"         >> "$LOG_FILE" 2>&1 &
+    rx_pid=$!
+    echo "wfb_rx 已启动 (PID: $rx_pid)"
+
+    # 等待进程初始化
+    sleep 1
+
+    # 启动 wfb_tun（前台运行）
+    echo "启动 wfb_tun..."
+    echo "按 Ctrl+C 停止客户端"
+    echo ""
+
+    ip addr flush dev "$TUN_NAME" 2>/dev/null || true
+
+    "$wfb_tun"         -u "$TX_UDP_PORT"         -t "$TUN_NAME"         -a "$TUN_ADDR"         -l "$RX_UDP_PORT"         2>&1 | tee -a "$LOG_FILE"
 }
 
 # ============================================
@@ -207,6 +245,19 @@ start_client() {
 cleanup() {
     echo ""
     echo "正在清理..."
+
+    # 停止后台进程
+    if [[ -n "${tx_pid:-}" ]] && kill -0 "$tx_pid" 2>/dev/null; then
+        echo "停止 wfb_tx (PID: $tx_pid)..."
+        kill "$tx_pid" 2>/dev/null || true
+        wait "$tx_pid" 2>/dev/null || true
+    fi
+
+    if [[ -n "${rx_pid:-}" ]] && kill -0 "$rx_pid" 2>/dev/null; then
+        echo "停止 wfb_rx (PID: $rx_pid)..."
+        kill "$rx_pid" 2>/dev/null || true
+        wait "$rx_pid" 2>/dev/null || true
+    fi
 
     # 删除 TUN 设备（可选）
     if ip link show "$TUN_NAME" &>/dev/null; then
