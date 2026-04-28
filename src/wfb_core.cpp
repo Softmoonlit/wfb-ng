@@ -4,6 +4,8 @@
 #include "rx_demux.h"
 #include "tx_worker.h"
 #include "tun_reader.h"
+#include "scheduler_worker.h"
+#include "server_scheduler.h"
 
 #include <atomic>
 #include <csignal>
@@ -137,6 +139,43 @@ int run_server(const Config& config) {
     });
 
     // TX 配置
+    // 创建调度器实例
+    ServerScheduler scheduler(config.mcs, config.bandwidth);
+
+    // 注册节点（从配置文件或命令行）
+    // 假设有 10 个节点，ID 从 1 到 10
+    for (uint8_t node_id = 1; node_id <= 10; node_id++) {
+        scheduler.init_node(node_id);  // 注意: ServerScheduler 使用 init_node 而不是 register_node
+    }
+
+    // 调度器配置
+    SchedulerConfig sched_config = {
+        .min_window_ms = config.min_window_ms,
+        .max_window_ms = config.max_window_ms,
+        .guard_interval_ms = config.guard_interval_ms,
+        .node_count = 10
+    };
+
+    // 启动调度器线程
+    SchedulerStats sched_stats;
+    std::thread scheduler_thread([&]() {
+        // 设置实时优先级 95（低于控制面 99，高于发射端 90）
+        if (!set_thread_realtime_priority(ThreadPriority::SCHEDULER, "scheduler")) {
+            std::cerr << "警告: 无法设置调度器线程实时优先级" << std::endl;
+        }
+
+        // TODO: 需要实际的 pcap 句柄，目前使用 nullptr 作为占位符
+        pcap_t* pcap_handle = nullptr;
+
+        SchedulerError err = scheduler_main_loop(
+            &shared_state, &scheduler, pcap_handle,
+            sched_config, &g_shutdown, &sched_stats);
+
+        if (err != SchedulerError::OK) {
+            std::cerr << "调度器线程异常退出: " << static_cast<int>(err) << std::endl;
+        }
+    });
+
     TxConfig tx_config = {
         .mcs = config.mcs,
         .bandwidth = config.bandwidth,
@@ -170,6 +209,7 @@ int run_server(const Config& config) {
     rx_thread.join();
     tun_thread.join();
     tx_thread.join();
+    scheduler_thread.join();
 
     // 输出统计信息
     std::cout << "TUN 统计: 读取=" << tun_stats.packets_read.load()
@@ -179,6 +219,12 @@ int run_server(const Config& config) {
     std::cout << "TX 统计: 发送=" << tx_stats.packets_sent.load()
               << ", 失败=" << tx_stats.packets_failed.load()
               << ", Token过期=" << tx_stats.token_expired.load() << std::endl;
+
+    // 输出调度器统计信息
+    std::cout << "调度器统计: Token发送=" << sched_stats.tokens_sent.load()
+              << ", Token失败=" << sched_stats.tokens_failed.load()
+              << ", 空闲巡逻=" << sched_stats.idle_patrols.load()
+              << ", 节点切换=" << sched_stats.node_switches.load() << std::endl;
 
     std::cout << "服务端模式退出" << std::endl;
     return 0;
