@@ -4,10 +4,15 @@
 #include <memory>
 #include <functional>
 #include <mutex>
+#include <chrono>
+#include <unistd.h>
 
 // pcap 前向声明
 struct pcap;
 typedef struct pcap pcap_t;
+
+// zfex_code 前向声明
+typedef struct zfex_code zfex_code;
 
 /**
  * 自定义删除器，用于智能指针管理 C 风格资源
@@ -40,15 +45,28 @@ struct ZfexCodeDeleter {
 };
 using ZfexCodeHandle = std::unique_ptr<zfex_code, ZfexCodeDeleter>;
 
+// 创建 zfex_code 智能指针的辅助函数
+inline ZfexCodeHandle make_zfex_handle(zfex_code* raw) {
+    if (!raw) return nullptr;
+    return ZfexCodeHandle(raw);
+}
+
 // 文件描述符智能指针
 struct FdDeleter {
     void operator()(int* fd) const {
         if (fd && *fd >= 0) {
             close(*fd);
+            delete fd;
         }
     }
 };
 using FdHandle = std::unique_ptr<int, FdDeleter>;
+
+// 创建文件描述符智能指针的辅助函数
+inline FdHandle make_fd_handle(int raw_fd) {
+    if (raw_fd < 0) return nullptr;
+    return FdHandle(new int(raw_fd));
+}
 
 /**
  * RAII 锁守卫，带超时
