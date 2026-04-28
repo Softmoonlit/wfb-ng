@@ -7,12 +7,18 @@
 #include <chrono>
 #include <unistd.h>
 
-// pcap 前向声明
-struct pcap;
-typedef struct pcap pcap_t;
+// pcap 头文件
+#include <pcap/pcap.h>
 
+// zfex 头文件（如果可用）
+#ifdef USE_ZFEC
+#include "zfex.h"
+#else
 // zfex_code 前向声明
 typedef struct zfex_code zfex_code;
+// 前向声明 zfex 销毁函数
+extern "C" void zfex_code_destroy(zfex_code*);
+#endif
 
 /**
  * 自定义删除器，用于智能指针管理 C 风格资源

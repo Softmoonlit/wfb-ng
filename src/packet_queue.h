@@ -3,6 +3,14 @@
 #include <vector>
 #include <mutex>
 #include <stdexcept>
+#include <cstdint>
+
+// 发射数据包结构
+struct TxPacket {
+    std::vector<uint8_t> data;  // 数据载荷
+    size_t len = 0;             // 数据长度
+    uint64_t timestamp_us = 0;  // 时间戳
+};
 
 // 物理内存池静态分配，绝对安全的环形队列
 template<typename T>

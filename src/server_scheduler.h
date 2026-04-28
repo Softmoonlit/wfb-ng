@@ -46,8 +46,23 @@ private:
 
     AqSqManager* aq_sq_manager = nullptr;  // 队列管理器引用
     size_t num_nodes = 10;                  // 节点数量
+    int mcs_ = 0;                           // MCS 速率
+    int bandwidth_ = 20;                    // 频宽 (MHz)
 
 public:
+    /**
+     * @brief 默认构造函数
+     */
+    ServerScheduler() = default;
+
+    /**
+     * @brief 带参数的构造函数
+     * @param mcs MCS 速率
+     * @param bandwidth 频宽 (MHz)
+     */
+    ServerScheduler(int mcs, int bandwidth)
+        : mcs_(mcs), bandwidth_(bandwidth) {}
+
     /**
      * @brief 初始化节点状态
      * @param node_id 节点 ID（1-10）

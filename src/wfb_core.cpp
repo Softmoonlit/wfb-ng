@@ -12,6 +12,7 @@
 #include <thread>
 #include <vector>
 #include <iostream>
+#include <pcap.h>
 
 // 全局关闭信号
 static std::atomic<bool> g_shutdown{false};
@@ -87,8 +88,37 @@ int main(int argc, char** argv) {
     return ret;
 }
 
+// 创建 pcap 句柄的辅助函数
+pcap_t* create_pcap_handle(const char* interface, int channel, char* errbuf) {
+    pcap_t* handle = pcap_open_live(interface, 2048, 1, 10, errbuf);
+    if (!handle) {
+        std::cerr << "无法打开接口 " << interface << ": " << errbuf << std::endl;
+        return nullptr;
+    }
+
+    // 设置 monitor 模式（如果支持）
+    int ret = pcap_set_datalink(handle, DLT_IEEE802_11_RADIO);
+    if (ret != 0) {
+        std::cerr << "警告: 无法设置 datalink 类型: " << pcap_geterr(handle) << std::endl;
+    }
+
+    return handle;
+}
+
 int run_server(const Config& config) {
     ThreadSharedState shared_state;
+
+    // 创建 pcap 句柄（Gap-02 修复）
+    char errbuf[PCAP_ERRBUF_SIZE];
+    pcap_t* pcap_handle = create_pcap_handle(
+        config.interface.c_str(),
+        config.channel,
+        errbuf
+    );
+    if (!pcap_handle) {
+        std::cerr << "错误: 无法创建 pcap 句柄" << std::endl;
+        return 1;
+    }
 
     // RX 配置
     RxConfig rx_config = {
@@ -158,15 +188,13 @@ int run_server(const Config& config) {
 
     // 启动调度器线程
     SchedulerStats sched_stats;
-    std::thread scheduler_thread([&]() {
+    std::thread scheduler_thread([&, pcap_handle]() {
         // 设置实时优先级 95（低于控制面 99，高于发射端 90）
         if (!set_thread_realtime_priority(ThreadPriority::SCHEDULER, "scheduler")) {
             std::cerr << "警告: 无法设置调度器线程实时优先级" << std::endl;
         }
 
-        // TODO: 需要实际的 pcap 句柄，目前使用 nullptr 作为占位符
-        pcap_t* pcap_handle = nullptr;
-
+        // Gap-02 修复：使用外部创建的 pcap_handle
         SchedulerError err = scheduler_main_loop(
             &shared_state, &scheduler, pcap_handle,
             sched_config, &g_shutdown, &sched_stats);
@@ -184,17 +212,15 @@ int run_server(const Config& config) {
         .inject_retry_delay_us = 100
     };
 
-    // 启动 TX 线程
+    // 启动 TX 线程（服务端）
     TxStats tx_stats;
-    std::thread tx_thread([&]() {
+    std::thread tx_thread([&, pcap_handle]() {
         // 设置实时优先级 90
         if (!set_thread_realtime_priority(ThreadPriority::TX_WORKER, "tx_worker")) {
             std::cerr << "警告: 无法设置 TX 线程实时优先级" << std::endl;
         }
 
-        // TODO: 需要实际的 pcap 句柄，目前使用 nullptr 作为占位符
-        pcap_t* pcap_handle = nullptr;
-
+        // Gap-02 修复：使用外部创建的 pcap_handle
         TxError err = tx_main_loop(&shared_state, pcap_handle,
                                    tx_config, &g_shutdown, &tx_stats);
 
@@ -232,6 +258,18 @@ int run_server(const Config& config) {
 
 int run_client(const Config& config) {
     ThreadSharedState shared_state;
+
+    // 创建 pcap 句柄（Gap-02 修复）
+    char errbuf[PCAP_ERRBUF_SIZE];
+    pcap_t* pcap_handle = create_pcap_handle(
+        config.interface.c_str(),
+        config.channel,
+        errbuf
+    );
+    if (!pcap_handle) {
+        std::cerr << "错误: 无法创建 pcap 句柄" << std::endl;
+        return 1;
+    }
 
     // RX 配置
     RxConfig rx_config = {
@@ -290,17 +328,15 @@ int run_client(const Config& config) {
         .inject_retry_delay_us = 100
     };
 
-    // 启动 TX 线程
+    // 启动 TX 线程（客户端）
     TxStats tx_stats;
-    std::thread tx_thread([&]() {
+    std::thread tx_thread([&, pcap_handle]() {
         // 设置实时优先级 90
         if (!set_thread_realtime_priority(ThreadPriority::TX_WORKER, "tx_worker")) {
             std::cerr << "警告: 无法设置 TX 线程实时优先级" << std::endl;
         }
 
-        // TODO: 需要实际的 pcap 句柄，目前使用 nullptr 作为占位符
-        pcap_t* pcap_handle = nullptr;
-
+        // Gap-02 修复：使用外部创建的 pcap_handle
         TxError err = tx_main_loop(&shared_state, pcap_handle,
                                    tx_config, &g_shutdown, &tx_stats);
 

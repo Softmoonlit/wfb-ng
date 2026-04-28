@@ -148,44 +148,60 @@ int create_tun_device(const std::string& name, char* error_buf) {
 }
 
 /**
- * 设置 TUN 队列长度
+ * 验证 TUN 设备名称安全性
+ * 只允许字母、数字和下划线，防止命令注入
+ */
+static bool validate_tun_name(const std::string& name) {
+    if (name.empty() || name.size() >= IFNAMSIZ) {
+        return false;
+    }
+    for (char c : name) {
+        if (!std::isalnum(c) && c != '_') {
+            return false;
+        }
+    }
+    return true;
+}
+
+/**
+ * 设置 TUN 队列长度（安全版本）
  *
- * 使用 ip 命令设置 TUN 设备的队列长度。
+ * Gap-04 修复：使用 ioctl 替代 popen，消除命令注入风险。
  * 遵循 CLAUDE.md 要求：必须设置 txqueuelen 100 实现极小水池反压。
- * 遵循计划要求：所有系统调用错误都有处理和恢复逻辑。
  *
  * @param name TUN 设备名
  * @param qlen 队列长度（必须为 100）
  * @return 成功返回 true
  */
 bool set_tun_txqueuelen(const std::string& name, int qlen) {
-    if (name.empty() || qlen <= 0) {
-        std::cerr << "参数无效: name=" << name << ", qlen=" << qlen << std::endl;
+    // Gap-04 修复：验证设备名，防止命令注入
+    if (!validate_tun_name(name)) {
+        std::cerr << "错误: 设备名包含非法字符: " << name << std::endl;
         return false;
     }
 
-    // 构建命令：ip link set dev <name> txqueuelen <qlen>
-    std::string cmd = "ip link set dev " + name + " txqueuelen " +
-                      std::to_string(qlen) + " 2>&1";
-
-    // 执行命令并获取输出
-    FILE* pipe = popen(cmd.c_str(), "r");
-    if (!pipe) {
-        std::cerr << "无法执行 ip 命令: " << strerror(errno) << std::endl;
+    if (qlen <= 0) {
+        std::cerr << "参数无效: qlen=" << qlen << std::endl;
         return false;
     }
 
-    char buffer[256];
-    std::string output;
-    while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
-        output += buffer;
+    // 使用 ioctl 替代 popen，彻底消除命令注入风险
+    int fd = socket(AF_INET, SOCK_DGRAM, 0);
+    if (fd < 0) {
+        std::cerr << "无法创建 socket: " << strerror(errno) << std::endl;
+        return false;
     }
 
-    int ret = pclose(pipe);
+    struct ifreq ifr;
+    memset(&ifr, 0, sizeof(ifr));
+    strncpy(ifr.ifr_name, name.c_str(), IFNAMSIZ - 1);
+    ifr.ifr_qlen = qlen;
+
+    int ret = ioctl(fd, SIOCSIFTXQLEN, &ifr);
+    close(fd);
 
     if (ret != 0) {
-        std::cerr << "警告: 设置 txqueuelen 失败: " << output;
-        std::cerr << "将使用默认队列长度" << std::endl;
+        std::cerr << "警告: 设置 txqueuelen 失败: " << strerror(errno) << std::endl;
         return false;
     }
 

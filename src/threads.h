@@ -76,9 +76,12 @@ struct ThreadSharedState {
     /**
      * 清除 Token 授权状态
      * 必须在持有 mtx 时调用
+     * Gap-05 修复：清除时通知条件变量，避免等待线程永久阻塞
      */
     void clear_token() REQUIRES(mtx) {
         can_send = false;
+        token_expire_time_ms = 0;
+        cv_send.notify_one();  // 通知等待线程状态已变更
     }
 
     /**

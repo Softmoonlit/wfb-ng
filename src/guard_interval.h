@@ -1,6 +1,9 @@
 #pragma once
 #include <stdint.h>
 
+// 保护间隔常量（per CLAUDE.md）
+constexpr uint16_t kGuardIntervalMs = 5;  // 节点切换保护间隔 5ms
+
 // 插入保护间隔（高精度休眠）
 // 参数:
 //   duration_ms: 保护间隔时长（毫秒）

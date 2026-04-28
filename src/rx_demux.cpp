@@ -165,7 +165,11 @@ RxError rx_demux_main_loop(
                     case ParseResult::OK: {
                         // 获取当前时间
                         uint64_t now_ms = get_monotonic_ms();
-                        uint64_t expire_time = now_ms + token.duration_ms;
+
+                        // Gap-07 修复：限制最大 duration 防止溢出
+                        constexpr uint16_t kMaxTokenDuration = 60000;  // 60 秒
+                        uint16_t safe_duration = std::min(token.duration_ms, kMaxTokenDuration);
+                        uint64_t expire_time = now_ms + safe_duration;
 
                         // 更新共享状态
                         {

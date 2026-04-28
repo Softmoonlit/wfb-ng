@@ -70,7 +70,12 @@ wfb_tun: src/wfb_tun.o
 	$(CC) -o $@ $^ $(LDFLAGS) -levent_core
 
 # wfb_core 单进程入口（Phase 2 架构）
-wfb_core: src/wfb_core.o src/guard_interval.o src/wifibroadcast.o src/watermark.o src/config.o src/error_handler.o src/threads.o src/rx_demux.o src/mac_token.o
+WFB_CORE_OBJS = src/wfb_core.o src/guard_interval.o src/wifibroadcast.o src/watermark.o \
+                src/config.o src/error_handler.o src/threads.o src/rx_demux.o src/mac_token.o \
+                src/tun_reader.o src/tx_worker.o src/scheduler_worker.o src/server_scheduler.o \
+                src/aq_sq_manager.o src/breathing_cycle.o src/zfex.o src/radiotap.o
+
+wfb_core: $(WFB_CORE_OBJS)
 	$(CXX) -o $@ $^ $(_LDFLAGS) -lpthread -lpcap
 
 # wfb_core 单元测试
