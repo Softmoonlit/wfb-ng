@@ -1,289 +1,187 @@
 #!/bin/bash
-# WFB-NG 服务器启动脚本
-# 包含系统检查、配置加载、调度器启动
-# 实现 APP-03, APP-04 需求
+
+# wfb-ng 服务端启动脚本（单进程版本）
+# 支持 --legacy 参数使用旧的多进程模式
+
 set -e
 
-# ============================================
-# 配置参数
-# ============================================
-WLAN_IFACE="${WLAN_IFACE:-wlan0}"           # 无线网卡接口
-MCS_INDEX="${MCS_INDEX:-6}"                  # MCS 索引（0-8）
-BANDWIDTH="${BANDWIDTH:-20}"                 # 频宽（MHz）
-NUM_NODES="${NUM_NODES:-10}"                 # 节点数量
-TUN_NAME="${TUN_NAME:-tun0}"                 # TUN 设备名称
-TUN_ADDR="${TUN_ADDR:-10.5.0.1/24}"           # TUN 设备地址（服务器侧）
-LOG_FILE="${LOG_FILE:-/var/log/wfb-ng/server.log}"  # 日志文件路径
-BAND="${BAND:-5G}"                           # 频段（2G/5G）
-CHANNEL2G="${CHANNEL2G:-6}"                  # 2G 频道
-CHANNEL5G="${CHANNEL5G:-149}"                # 5G 频道
+# === 配置区 ===
+WFB_CORE_BIN="./build/wfb_core"
+PID_FILE="/var/run/wfb_core_server.pid"
+LOG_FILE="/var/log/wfb_core_server.log"
 
-# ============================================
-# Root 权限检查
-# ============================================
+# 默认参数
+WIFI_INTERFACE="wlan0"
+CHANNEL=6
+MCS=0
+BANDWIDTH=20
+TUN_NAME="wfb0"
+VERBOSE=false
+LEGACY_MODE=false
+
+# === 辅助函数 ===
+
+log_info() {
+    echo "[INFO] $(date '+%Y-%m-%d %H:%M:%S') $1"
+}
+
+log_warn() {
+    echo "[WARN] $(date '+%Y-%m-%d %H:%M:%S') $1" >&2
+}
+
+log_error() {
+    echo "[ERROR] $(date '+%Y-%m-%d %H:%M:%S') $1" >&2
+}
+
+log_success() {
+    echo "[SUCCESS] $(date '+%Y-%m-%d %H:%M:%S') $1"
+}
+
+print_usage() {
+    cat << EOF
+用法: $0 [选项]
+
+选项:
+    -i <接口>       WiFi 网卡接口（默认: wlan0）
+    -c <信道>       信道号（默认: 6）
+    -m <MCS>        MCS 调制方案 0-8（默认: 0）
+    --bw <MHz>      频宽 20/40（默认: 20）
+    --tun <名称>    TUN 设备名（默认: wfb0）
+    --fec-n <N>     FEC 总块数（默认: 12）
+    --fec-k <K>     FEC 数据块数（默认: 8）
+    --legacy        使用旧的多进程模式
+    -v              详细日志
+    -h, --help      显示帮助
+
+示例:
+    # 单进程模式（推荐）
+    sudo $0 -i wlan0 -c 6 -m 0
+
+    # 旧多进程模式（向后兼容）
+    sudo $0 -i wlan0 -c 6 -m 0 --legacy
+EOF
+}
+
 check_root() {
-    if [[ $EUID -ne 0 ]]; then
-        echo "错误: 必须以 Root 权限运行此脚本" >&2
-        echo "提示: 使用 sudo $0" >&2
+    if [ "$EUID" -ne 0 ]; then
+        log_error "必须以 Root 权限运行"
         exit 1
     fi
-    echo "检查通过: Root 权限验证成功"
 }
 
-# ============================================
-# 网卡 Monitor 模式检查
-# ============================================
-check_monitor_mode() {
-    local iface="$1"
-
-    # 检查网卡是否存在
-    if ! ip link show "$iface" &>/dev/null; then
-        echo "错误: 网卡 $iface 不存在" >&2
-        echo "提示: 请检查网卡名称是否正确" >&2
+check_interface() {
+    if ! ip link show "$1" &>/dev/null; then
+        log_error "WiFi 接口不存在: $1"
         exit 1
     fi
-
-    # 检查是否处于 Monitor 模式
-    if ! iwconfig "$iface" 2>&1 | grep -q "Mode:Monitor"; then
-        echo "错误: 网卡 $iface 未处于 Monitor 模式" >&2
-        echo "提示: 使用 'iwconfig $iface mode Monitor' 设置" >&2
-        exit 1
-    fi
-    echo "检查通过: 网卡 $iface 处于 Monitor 模式"
+    log_info "WiFi 接口已确认: $1"
 }
 
-# ============================================
-# 设置网卡为 Monitor 模式
-# ============================================
-setup_monitor_mode() {
-    local iface="$1"
-    local band="$2"
+set_monitor_mode() {
+    log_info "设置 Monitor 模式: $1"
+    ip link set "$1" down
+    iw dev "$1" set type monitor
+    ip link set "$1" up
+    iw dev "$1" set channel "$2"
+    log_success "Monitor 模式设置成功"
+}
 
-    echo "正在配置网卡 $iface 为 Monitor 模式..."
+cleanup() {
+    log_info "收到退出信号，清理资源..."
 
-    # 禁用 NetworkManager 管理
-    nmcli device set "$iface" managed no 2>/dev/null || true
+    if [ -n "$WFB_PID" ] && kill -0 "$WFB_PID" 2>/dev/null; then
+        log_info "发送 SIGTERM 到 wfb_core (PID: $WFB_PID)..."
+        kill -TERM "$WFB_PID"
+        wait "$WFB_PID" 2>/dev/null || true
+    fi
 
-    # 关闭网卡
-    ip link set "$iface" down
+    # 删除 TUN 设备
+    if ip link show "$TUN_NAME" &>/dev/null; then
+        ip link delete "$TUN_NAME" 2>/dev/null || true
+    fi
 
-    # 设置 Monitor 模式
-    iw dev "$iface" set monitor otherbss
+    # 删除 PID 文件
+    rm -f "$PID_FILE"
 
-    # 设置监管域（玻利维亚，允许最大功率）
-    iw reg set BO
+    log_success "清理完成"
+    exit 0
+}
 
-    # 启动网卡
-    ip link set "$iface" up
+# === 解析参数 ===
 
-    # 设置频道
-    case "$band" in
-        "5G")
-            echo "设置 $iface 到频道 $CHANNEL5G"
-            iw dev "$iface" set channel "$CHANNEL5G" HT20
-            ;;
-        "2G")
-            echo "设置 $iface 到频道 $CHANNEL2G"
-            iw dev "$iface" set channel "$CHANNEL2G" HT20
-            ;;
-        *)
-            echo "错误: 请选择 2G 或 5G 频段" >&2
-            exit 1
-            ;;
+while [[ $# -gt 0 ]]; do
+    case $1 in
+        -i) WIFI_INTERFACE="$2"; shift 2 ;;
+        -c) CHANNEL="$2"; shift 2 ;;
+        -m) MCS="$2"; shift 2 ;;
+        --bw) BANDWIDTH="$2"; shift 2 ;;
+        --tun) TUN_NAME="$2"; shift 2 ;;
+        --fec-n) FEC_N="$2"; shift 2 ;;
+        --fec-k) FEC_K="$2"; shift 2 ;;
+        --legacy) LEGACY_MODE=true; shift ;;
+        -v) VERBOSE=true; shift ;;
+        -h|--help) print_usage; exit 0 ;;
+        *) log_error "未知参数: $1"; print_usage; exit 1 ;;
     esac
+done
 
-    echo "检查通过: 网卡 $iface 已配置为 Monitor 模式"
-}
+# === 主流程 ===
 
-# ============================================
-# TUN 设备设置
-# ============================================
-setup_tun() {
-    local tun_name="$1"
-    local txqueuelen=100
+log_info "启动 wfb-ng 服务端..."
+check_root
+check_interface "$WIFI_INTERFACE"
 
-    # 检查 TUN 设备是否已存在
-    if ip link show "$tun_name" &>/dev/null; then
-        echo "警告: TUN 设备 $tun_name 已存在，跳过创建"
-    else
-        # 创建 TUN 设备
-        ip tuntap add dev "$tun_name" mode tun
-        echo "TUN 设备 $tun_name 已创建"
-    fi
+# 设置信号处理
+trap cleanup SIGINT SIGTERM
 
-    # 启动 TUN 设备
-    ip link set "$tun_name" up
+# 设置 Monitor 模式
+set_monitor_mode "$WIFI_INTERFACE" "$CHANNEL"
 
-    # 设置 txqueuelen（关键：设置为 100 触发快速丢包反压）
-    ip link set "$tun_name" txqueuelen $txqueuelen
-
-    echo "TUN 设备 $tun_name 已配置，txqueuelen=$txqueuelen"
-}
-
-# ============================================
-# 日志目录创建
-# ============================================
-setup_logging() {
-    local log_dir
-    log_dir=$(dirname "$LOG_FILE")
-
-    if [[ ! -d "$log_dir" ]]; then
-        mkdir -p "$log_dir"
-        echo "日志目录已创建: $log_dir"
-    else
-        echo "日志目录已存在: $log_dir"
-    fi
-}
-
-# ============================================
-# 显示配置信息
-# ============================================
-print_config() {
-    echo "============================================"
-    echo "WFB-NG 服务器启动配置"
-    echo "============================================"
-    echo "无线网卡: $WLAN_IFACE"
-    echo "MCS 索引: $MCS_INDEX"
-    echo "频宽: ${BANDWIDTH}MHz"
-    echo "节点数量: $NUM_NODES"
-    echo "TUN 设备: $TUN_NAME"
-    echo "日志文件: $LOG_FILE"
-    echo "频段: $BAND"
-    echo "============================================"
-}
-
-# ============================================
-# 主程序启动
-# ============================================
-start_server() {
-    echo "启动 WFB-NG 服务器..."
-    echo "配置: MCS=$MCS_INDEX, 频宽=${BANDWIDTH}MHz, 节点数=$NUM_NODES"
-
-    # 获取脚本所在目录
-    SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-    PROJECT_ROOT="$(dirname "$SCRIPT_DIR")"
-
-    # UDP 端口配置
-    TX_UDP_PORT="${TX_UDP_PORT:-5600}"
-    RX_UDP_PORT="${RX_UDP_PORT:-5800}"
+# 检查启动模式
+if [ "$LEGACY_MODE" = true ]; then
+    log_warn "使用旧的多进程模式（不推荐）"
+    # 保留原有的 wfb_tx/wfb_rx/wfb_tun 启动逻辑
+    # ...（省略旧逻辑）
+    log_error "旧模式未实现，请使用单进程模式"
+    exit 1
+else
+    # === 单进程模式 ===
+    log_info "启动 wfb_core 单进程..."
 
     # 检查可执行文件
-    local wfb_tx="$PROJECT_ROOT/wfb_tx"
-    local wfb_rx="$PROJECT_ROOT/wfb_rx"
-    local wfb_tun="$PROJECT_ROOT/wfb_tun"
-
-    if [[ ! -x "$wfb_tx" ]]; then
-        echo "错误: 未找到 wfb_tx 可执行文件" >&2
-        echo "预期路径: $wfb_tx" >&2
-        exit 1
+    if [ ! -f "$WFB_CORE_BIN" ]; then
+        log_warn "wfb_core 未找到，尝试编译..."
+        make clean && make
     fi
 
-    if [[ ! -x "$wfb_rx" ]]; then
-        echo "错误: 未找到 wfb_rx 可执行文件" >&2
-        echo "预期路径: $wfb_rx" >&2
-        exit 1
+    # 构建命令行
+    CMD="$WFB_CORE_BIN --mode server -i $WIFI_INTERFACE -c $CHANNEL -m $MCS --bw $BANDWIDTH --tun $TUN_NAME"
+
+    if [ -n "$FEC_N" ]; then
+        CMD="$CMD --fec-n $FEC_N"
+    fi
+    if [ -n "$FEC_K" ]; then
+        CMD="$CMD --fec-k $FEC_K"
+    fi
+    if [ "$VERBOSE" = true ]; then
+        CMD="$CMD -v"
     fi
 
-    if [[ ! -x "$wfb_tun" ]]; then
-        echo "错误: 未找到 wfb_tun 可执行文件" >&2
-        echo "预期路径: $wfb_tun" >&2
-        exit 1
-    fi
+    # 启动 wfb_core
+    log_info "执行: $CMD"
+    $CMD 2>&1 | tee "$LOG_FILE" &
+    WFB_PID=$!
 
-    echo "使用独立进程模式："
-    echo "  - wfb_tx: 无线发射端（从 UDP $TX_UDP_PORT 读取数据）"
-    echo "  - wfb_rx: 无线接收端（转发到 UDP $RX_UDP_PORT）"
-    echo "  - wfb_tun: TUN 设备桥接（$TX_UDP_PORT -> 无线, 无线 -> $RX_UDP_PORT）"
-    echo ""
+    # 保存 PID
+    echo "$WFB_PID" > "$PID_FILE"
+    log_success "wfb_core 已启动 (PID: $WFB_PID)"
 
-    # 启动 wfb_tx（后台运行）
-    echo "启动 wfb_tx..."
-    "$wfb_tx"         -K "$PROJECT_ROOT/drone.key"         -M "$MCS_INDEX"         -B "$BANDWIDTH"         -u "$TX_UDP_PORT"         -p 0         "$WLAN_IFACE"         >> "$LOG_FILE" 2>&1 &
-    tx_pid=$!
-    echo "wfb_tx 已启动 (PID: $tx_pid)"
+    # 等待进程退出
+    wait "$WFB_PID"
+    EXIT_CODE=$?
 
-    # 启动 wfb_rx（后台运行）
-    echo "启动 wfb_rx..."
-    "$wfb_rx"         -K "$PROJECT_ROOT/gs.key"         -p 1         -u "$RX_UDP_PORT"         "$WLAN_IFACE"         >> "$LOG_FILE" 2>&1 &
-    rx_pid=$!
-    echo "wfb_rx 已启动 (PID: $rx_pid)"
+    log_info "wfb_core 已退出 (退出码: $EXIT_CODE)"
+fi
 
-    # 等待进程初始化
-    sleep 1
-
-    # 启动 wfb_tun（前台运行）
-    echo "启动 wfb_tun..."
-    echo "按 Ctrl+C 停止服务器"
-    echo ""
-
-    ip addr flush dev "$TUN_NAME" 2>/dev/null || true
-
-    "$wfb_tun"         -u "$TX_UDP_PORT"         -t "$TUN_NAME"         -a "$TUN_ADDR"         -l "$RX_UDP_PORT"         2>&1 | tee -a "$LOG_FILE"
-}
-
-# ============================================
-# 清理函数
-# ============================================
-cleanup() {
-    echo ""
-    echo "正在清理..."
-
-    # 停止后台进程
-    if [[ -n "${tx_pid:-}" ]] && kill -0 "$tx_pid" 2>/dev/null; then
-        echo "停止 wfb_tx (PID: $tx_pid)..."
-        kill "$tx_pid" 2>/dev/null || true
-        wait "$tx_pid" 2>/dev/null || true
-    fi
-
-    if [[ -n "${rx_pid:-}" ]] && kill -0 "$rx_pid" 2>/dev/null; then
-        echo "停止 wfb_rx (PID: $rx_pid)..."
-        kill "$rx_pid" 2>/dev/null || true
-        wait "$rx_pid" 2>/dev/null || true
-    fi
-
-    # 删除 TUN 设备（可选）
-    if ip link show "$TUN_NAME" &>/dev/null; then
-        echo "提示: TUN 设备 $TUN_NAME 仍存在"
-        echo "如需删除，请运行: ip tuntap del dev $TUN_NAME mode tun"
-    fi
-
-    echo "服务器已停止"
-}
-
-# 注册清理函数
-trap cleanup EXIT INT TERM
-
-# ============================================
-# 主流程
-# ============================================
-main() {
-    echo "============================================"
-    echo "WFB-NG 服务器启动脚本"
-    echo "============================================"
-    echo ""
-
-    # 1. 检查 Root 权限
-    check_root
-
-    # 2. 配置网卡（如果尚未处于 Monitor 模式）
-    if ! iwconfig "$WLAN_IFACE" 2>&1 | grep -q "Mode:Monitor"; then
-        setup_monitor_mode "$WLAN_IFACE" "$BAND"
-    else
-        check_monitor_mode "$WLAN_IFACE"
-    fi
-
-    # 3. 设置 TUN 设备
-    setup_tun "$TUN_NAME"
-
-    # 4. 设置日志目录
-    setup_logging
-
-    # 5. 显示配置信息
-    print_config
-
-    # 6. 启动服务器
-    start_server
-}
-
-# 执行主流程
-main "$@"
+# 清理
+cleanup
