@@ -1,106 +1,119 @@
+#include "config.h"
+#include "error_handler.h"
 #include "threads.h"
 
-#include <pthread.h>
-#include <sched.h>
-#include <sys/time.h>
-#include <unistd.h>
-
-#include <cassert>
-#include <cerrno>
-#include <cstdio>
-#include <cstring>
+#include <atomic>
+#include <csignal>
+#include <thread>
+#include <vector>
 #include <iostream>
 
-#include "guard_interval.h"
-#include "watermark.h"
+// 全局关闭信号
+static std::atomic<bool> g_shutdown{false};
 
-namespace {
+// 信号处理函数
+void signal_handler(int sig) {
+    std::cout << "\n收到信号 " << sig << "，正在关闭..." << std::endl;
+    g_shutdown.store(true);
+}
 
-// 将单调时钟转换为毫秒，供门控时间判断使用。
-uint64_t get_monotonic_ms() {
-    struct timespec ts;
-    int rc = clock_gettime(CLOCK_MONOTONIC, &ts);
-    if (rc != 0) {
-        return 0;
+// Server 模式主函数（骨架，后续计划填充）
+int run_server(const Config& config);
+
+// Client 模式主函数（骨架，后续计划填充）
+int run_client(const Config& config);
+
+int main(int argc, char** argv) {
+    // 1. 解析命令行参数
+    Config config;
+    if (!parse_arguments(argc, argv, config)) {
+        std::cerr << "参数解析失败，使用 --help 查看用法" << std::endl;
+        return 1;
     }
-    return static_cast<uint64_t>(ts.tv_sec) * 1000ULL +
-           static_cast<uint64_t>(ts.tv_nsec) / 1000000ULL;
-}
 
-// 统一输出实时调度失败告警。
-void warn_realtime_priority_failure(int priority, int err) {
-    std::cerr << "警告: 无法设置 SCHED_FIFO 优先级 " << priority
-              << ", errno=" << err << " (" << std::strerror(err) << ")" << std::endl;
-}
-
-}  // namespace
-
-bool check_root_permission() {
-    // 检查是否以 Root 权限运行（per RT-04）
-    // SCHED_FIFO 实时调度需要 Root 权限或 CAP_SYS_NICE 能力
-    return (geteuid() == 0);
-}
-
-void set_thread_realtime_priority(int priority) {
-    pthread_t self = pthread_self();
-    struct sched_param params;
-    memset(&params, 0, sizeof(params));
-    params.sched_priority = priority;
-
-    int rc = pthread_setschedparam(self, SCHED_FIFO, &params);
-    if (rc != 0) {
-        warn_realtime_priority_failure(priority, rc);
-    }
-}
-
-void control_main_loop(ThreadSharedState* shared_state) {
-    assert(shared_state != nullptr);
-    set_thread_realtime_priority(kControlThreadPriority);
-
-    std::unique_lock<std::mutex> lock(shared_state->mtx);
-    shared_state->can_send = true;
-    shared_state->token_expire_time_ms = get_monotonic_ms() + kGuardIntervalMs;
-    shared_state->cv_send.notify_one();
-}
-
-void tx_main_loop(ThreadSharedState* shared_state) {
-    assert(shared_state != nullptr);
-    set_thread_realtime_priority(kTxThreadPriority);
-
-    std::unique_lock<std::mutex> lock(shared_state->mtx);
-    shared_state->cv_send.wait(lock, [shared_state]() {
-        return shared_state->can_send;
+    // 2. 设置错误处理回调
+    set_error_callback([](const ErrorContext& ctx) {
+        std::cerr << "[" << ctx.file << ":" << ctx.line << "] "
+                  << ctx.message << std::endl;
+        if (ctx.severity == ErrorSeverity::FATAL) {
+            exit(1);
+        }
     });
 
-    uint64_t now_ms = get_monotonic_ms();
-    if (shared_state->can_send && now_ms <= shared_state->token_expire_time_ms) {
-        lock.unlock();
-        apply_guard_interval(kGuardIntervalMs);
-    } else {
-        shared_state->can_send = false;
-    }
-}
+    // 3. 注册信号处理
+    std::signal(SIGINT, signal_handler);
+    std::signal(SIGTERM, signal_handler);
 
-void tun_reader_main_loop(ThreadSharedState* shared_state) {
-    assert(shared_state != nullptr);
-
-    const size_t dynamic_limit = calculate_dynamic_limit(25, kDefaultPhyRateBps, 1450);
-    shared_state->packet_queue.push(static_cast<uint8_t>(dynamic_limit & 0xff));
-}
-
-#ifndef TEST_MODE
-int main() {
-    // 启动时检查 Root 权限（per RT-04）
-    if (!check_root_permission()) {
-        std::cerr << "警告: 未以 Root 权限运行，实时调度可能失败" << std::endl;
+    // 4. Root 权限检查
+    if (geteuid() != 0) {
+        std::cerr << "警告: 必须以 Root 权限运行才能设置实时调度" << std::endl;
+        // 继续，但实时调度可能失败
     }
 
-    ThreadSharedState shared_state;
+    // 5. 打印配置信息
+    if (config.verbose) {
+        std::cout << "配置信息:\n"
+                  << "  模式: " << (config.mode == Config::Mode::SERVER ? "服务端" : "客户端") << "\n"
+                  << "  接口: " << config.interface << "\n"
+                  << "  信道: " << config.channel << "\n"
+                  << "  MCS: " << config.mcs << "\n"
+                  << "  频宽: " << config.bandwidth << "MHz\n"
+                  << "  TUN设备: " << config.tun_name << "\n"
+                  << "  FEC参数: N=" << config.fec.n << ", K=" << config.fec.k << "\n";
+        if (config.mode == Config::Mode::CLIENT) {
+            std::cout << "  节点ID: " << static_cast<int>(config.node_id) << "\n";
+        }
+    }
 
-    control_main_loop(&shared_state);
-    tx_main_loop(&shared_state);
-    tun_reader_main_loop(&shared_state);
+    // 6. 根据模式执行
+    int ret = 0;
+    switch (config.mode) {
+        case Config::Mode::SERVER:
+            std::cout << "启动服务端模式..." << std::endl;
+            ret = run_server(config);
+            break;
+        case Config::Mode::CLIENT:
+            std::cout << "启动客户端模式，节点 ID: "
+                      << static_cast<int>(config.node_id) << std::endl;
+            ret = run_client(config);
+            break;
+    }
 
+    return ret;
+}
+
+int run_server(const Config& config) {
+    std::cout << "服务端模式待实现" << std::endl;
+
+    // 后续计划填充
+    // 1. 创建共享状态
+    // 2. 启动控制线程、发射线程、TUN读取线程
+    // 3. 等待关闭信号
+    // 4. 清理资源
+
+    // 临时实现：等待关闭信号
+    while (!g_shutdown.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    std::cout << "服务端模式退出" << std::endl;
     return 0;
 }
-#endif
+
+int run_client(const Config& config) {
+    std::cout << "客户端模式待实现" << std::endl;
+
+    // 后续计划填充
+    // 1. 创建共享状态
+    // 2. 启动控制线程、发射线程、TUN读取线程
+    // 3. 等待关闭信号
+    // 4. 清理资源
+
+    // 临时实现：等待关闭信号
+    while (!g_shutdown.load()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+
+    std::cout << "客户端模式退出" << std::endl;
+    return 0;
+}

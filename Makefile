@@ -70,7 +70,7 @@ wfb_tun: src/wfb_tun.o
 	$(CC) -o $@ $^ $(LDFLAGS) -levent_core
 
 # wfb_core 单进程入口（Phase 2 架构）
-wfb_core: src/wfb_core.o src/guard_interval.o src/wifibroadcast.o src/watermark.o
+wfb_core: src/wfb_core.o src/guard_interval.o src/wifibroadcast.o src/watermark.o src/config.o src/error_handler.o
 	$(CXX) -o $@ $^ $(_LDFLAGS) -lpthread
 
 wfb_rtsp: src/rtsp_server.c
