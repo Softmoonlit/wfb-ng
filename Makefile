@@ -70,8 +70,8 @@ wfb_tun: src/wfb_tun.o
 	$(CC) -o $@ $^ $(LDFLAGS) -levent_core
 
 # wfb_core 单进程入口（Phase 2 架构）
-wfb_core: src/wfb_core.o src/guard_interval.o src/wifibroadcast.o src/watermark.o src/config.o src/error_handler.o
-	$(CXX) -o $@ $^ $(_LDFLAGS) -lpthread
+wfb_core: src/wfb_core.o src/guard_interval.o src/wifibroadcast.o src/watermark.o src/config.o src/error_handler.o src/threads.o src/rx_demux.o src/mac_token.o
+	$(CXX) -o $@ $^ $(_LDFLAGS) -lpthread -lpcap
 
 wfb_rtsp: src/rtsp_server.c
 	$(CC) $(_CFLAGS) $(shell pkg-config --cflags gstreamer-rtsp-server-1.0) -o $@ $^ $(LDFLAGS) $(shell pkg-config --libs gstreamer-rtsp-server-1.0)

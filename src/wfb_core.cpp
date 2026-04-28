@@ -1,6 +1,7 @@
 #include "config.h"
 #include "error_handler.h"
 #include "threads.h"
+#include "rx_demux.h"
 
 #include <atomic>
 #include <csignal>
@@ -83,36 +84,76 @@ int main(int argc, char** argv) {
 }
 
 int run_server(const Config& config) {
-    std::cout << "服务端模式待实现" << std::endl;
+    ThreadSharedState shared_state;
 
-    // 后续计划填充
-    // 1. 创建共享状态
-    // 2. 启动控制线程、发射线程、TUN读取线程
-    // 3. 等待关闭信号
-    // 4. 清理资源
+    // RX 配置
+    RxConfig rx_config = {
+        .interface = config.interface.c_str(),
+        .channel = config.channel,
+        .pcap_timeout_ms = 10,
+        .local_node_id = 0,
+        .is_server = true
+    };
 
-    // 临时实现：等待关闭信号
-    while (!g_shutdown.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
+    // 启动 RX 线程
+    std::thread rx_thread([&]() {
+        // 设置实时优先级 99
+        if (!set_thread_realtime_priority(ThreadPriority::CONTROL_PLANE, "rx_demux")) {
+            std::cerr << "警告: 无法设置 RX 线程实时优先级" << std::endl;
+        }
+
+        RxStats stats;
+        RxError err = rx_demux_main_loop(&shared_state, rx_config, &g_shutdown, &stats);
+
+        if (err != RxError::OK) {
+            std::cerr << "RX 线程异常退出: " << static_cast<int>(err) << std::endl;
+        }
+    });
+
+    // ... 其他线程 ...
+
+    std::cout << "服务端模式运行中，按 Ctrl+C 退出..." << std::endl;
+
+    // 等待所有线程
+    rx_thread.join();
 
     std::cout << "服务端模式退出" << std::endl;
     return 0;
 }
 
 int run_client(const Config& config) {
-    std::cout << "客户端模式待实现" << std::endl;
+    ThreadSharedState shared_state;
 
-    // 后续计划填充
-    // 1. 创建共享状态
-    // 2. 启动控制线程、发射线程、TUN读取线程
-    // 3. 等待关闭信号
-    // 4. 清理资源
+    // RX 配置
+    RxConfig rx_config = {
+        .interface = config.interface.c_str(),
+        .channel = config.channel,
+        .pcap_timeout_ms = 10,
+        .local_node_id = config.node_id,
+        .is_server = false
+    };
 
-    // 临时实现：等待关闭信号
-    while (!g_shutdown.load()) {
-        std::this_thread::sleep_for(std::chrono::milliseconds(100));
-    }
+    // 启动 RX 线程
+    std::thread rx_thread([&]() {
+        // 设置实时优先级 99
+        if (!set_thread_realtime_priority(ThreadPriority::CONTROL_PLANE, "rx_demux")) {
+            std::cerr << "警告: 无法设置 RX 线程实时优先级" << std::endl;
+        }
+
+        RxStats stats;
+        RxError err = rx_demux_main_loop(&shared_state, rx_config, &g_shutdown, &stats);
+
+        if (err != RxError::OK) {
+            std::cerr << "RX 线程异常退出: " << static_cast<int>(err) << std::endl;
+        }
+    });
+
+    // ... 其他线程 ...
+
+    std::cout << "客户端模式运行中，按 Ctrl+C 退出..." << std::endl;
+
+    // 等待所有线程
+    rx_thread.join();
 
     std::cout << "客户端模式退出" << std::endl;
     return 0;

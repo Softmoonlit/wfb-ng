@@ -31,6 +31,9 @@
  * 3. 禁止在临界区内进行 I/O 操作
  */
 struct ThreadSharedState {
+    // 构造函数，初始化数据包队列容量
+    ThreadSharedState(size_t queue_capacity = 1000) : packet_queue(queue_capacity) {}
+
     // 主互斥锁，保护以下 GUARDED_BY 变量
     mutable std::mutex mtx;
 
