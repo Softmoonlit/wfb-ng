@@ -2,6 +2,7 @@
 #include "error_handler.h"
 #include "threads.h"
 #include "rx_demux.h"
+#include "tx_worker.h"
 #include "tun_reader.h"
 
 #include <atomic>
@@ -135,17 +136,49 @@ int run_server(const Config& config) {
         }
     });
 
+    // TX 配置
+    TxConfig tx_config = {
+        .mcs = config.mcs,
+        .bandwidth = config.bandwidth,
+        .batch_size = 32,
+        .inject_retries = 3,
+        .inject_retry_delay_us = 100
+    };
+
+    // 启动 TX 线程
+    TxStats tx_stats;
+    std::thread tx_thread([&]() {
+        // 设置实时优先级 90
+        if (!set_thread_realtime_priority(ThreadPriority::TX_WORKER, "tx_worker")) {
+            std::cerr << "警告: 无法设置 TX 线程实时优先级" << std::endl;
+        }
+
+        // TODO: 需要实际的 pcap 句柄，目前使用 nullptr 作为占位符
+        pcap_t* pcap_handle = nullptr;
+
+        TxError err = tx_main_loop(&shared_state, pcap_handle,
+                                   tx_config, &g_shutdown, &tx_stats);
+
+        if (err != TxError::OK) {
+            std::cerr << "TX 线程异常退出: " << static_cast<int>(err) << std::endl;
+        }
+    });
+
     std::cout << "服务端模式运行中，按 Ctrl+C 退出..." << std::endl;
 
     // 等待所有线程
     rx_thread.join();
     tun_thread.join();
+    tx_thread.join();
 
     // 输出统计信息
     std::cout << "TUN 统计: 读取=" << tun_stats.packets_read.load()
               << ", 丢弃=" << tun_stats.packets_dropped.load()
               << ", FEC编码=" << tun_stats.fec_blocks_encoded.load()
               << ", 反压事件=" << tun_stats.backpressure_events.load() << std::endl;
+    std::cout << "TX 统计: 发送=" << tx_stats.packets_sent.load()
+              << ", 失败=" << tx_stats.packets_failed.load()
+              << ", Token过期=" << tx_stats.token_expired.load() << std::endl;
 
     std::cout << "服务端模式退出" << std::endl;
     return 0;
@@ -178,7 +211,7 @@ int run_client(const Config& config) {
         }
     });
 
-// TUN 配置（遵循 CLAUDE.md：txqueuelen 设置为 100，极小水池反压）
+    // TUN 配置（遵循 CLAUDE.md：txqueuelen 设置为 100，极小水池反压）
     TunConfig tun_config;
     tun_config.tun_name = config.tun_name;
     tun_config.txqueuelen = 100;  // 极小水池反压
@@ -202,17 +235,49 @@ int run_client(const Config& config) {
         }
     });
 
+    // TX 配置
+    TxConfig tx_config = {
+        .mcs = config.mcs,
+        .bandwidth = config.bandwidth,
+        .batch_size = 32,
+        .inject_retries = 3,
+        .inject_retry_delay_us = 100
+    };
+
+    // 启动 TX 线程
+    TxStats tx_stats;
+    std::thread tx_thread([&]() {
+        // 设置实时优先级 90
+        if (!set_thread_realtime_priority(ThreadPriority::TX_WORKER, "tx_worker")) {
+            std::cerr << "警告: 无法设置 TX 线程实时优先级" << std::endl;
+        }
+
+        // TODO: 需要实际的 pcap 句柄，目前使用 nullptr 作为占位符
+        pcap_t* pcap_handle = nullptr;
+
+        TxError err = tx_main_loop(&shared_state, pcap_handle,
+                                   tx_config, &g_shutdown, &tx_stats);
+
+        if (err != TxError::OK) {
+            std::cerr << "TX 线程异常退出: " << static_cast<int>(err) << std::endl;
+        }
+    });
+
     std::cout << "客户端模式运行中，按 Ctrl+C 退出..." << std::endl;
 
     // 等待所有线程
     rx_thread.join();
     tun_thread.join();
+    tx_thread.join();
 
     // 输出统计信息
     std::cout << "TUN 统计: 读取=" << tun_stats.packets_read.load()
               << ", 丢弃=" << tun_stats.packets_dropped.load()
               << ", FEC编码=" << tun_stats.fec_blocks_encoded.load()
               << ", 反压事件=" << tun_stats.backpressure_events.load() << std::endl;
+    std::cout << "TX 统计: 发送=" << tx_stats.packets_sent.load()
+              << ", 失败=" << tx_stats.packets_failed.load()
+              << ", Token过期=" << tx_stats.token_expired.load() << std::endl;
 
     std::cout << "客户端模式退出" << std::endl;
     return 0;
