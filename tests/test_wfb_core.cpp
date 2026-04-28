@@ -9,7 +9,6 @@
 #include <cmath>
 
 #include "threads.h"
-#include "packet_queue.h"
 #include "watermark.h"
 #include "mac_token.h"
 #include "config.h"
