@@ -11,6 +11,7 @@ files_modified:
 autonomous: true
 requirements:
   - BUF-05
+  - RT-07
 
 must_haves:
   truths:
