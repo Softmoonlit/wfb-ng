@@ -339,16 +339,62 @@ v1.0 发布成功当且仅当以下所有条件满足：
 7. [ ] 文档完整，包含架构、API、配置、运维指南
 8. [ ] UFTP 与底层集成验证通过，应用层零感知
 
-### Phase 5: 实现真正的单进程 wfb_core 架构，替换多进程方案
 
-**Goal:** [To be planned]
-**Requirements**: TBD
-**Depends on:** Phase 4
-**Plans:** 0 plans
+### Phase 5: 单进程 wfb_core 架构实现
+
+**目标**: 完成真正的单进程 wfb_core 入口，替换现有的 wfb_tx/wfb_rx/wfb_tun 多进程方案，实现控制面与数据面在单进程内闭环。
+
+**需求映射**:
+- PROC-01 ~ PROC-12: 单进程架构、控制/数据面分流、线程编排、向后兼容
+- RT-01 ~ RT-08: 实时调度提权（SCHED_FIFO 99/95/90）
+- BUF-05: 极小水池反压（txqueuelen=100）
+
+**成功标准**:
+1. wfb_core 单进程正确启动（server/client 双模式）
+2. 所有线程正确运行（RX 99、调度器 95、TX 90、TUN 普通优先级）
+3. Token 授权和过期逻辑正确
+4. 动态水位线反压机制生效
+5. 所有系统调用错误都有处理和恢复
+6. 资源使用 RAII 管理，无泄漏
+7. FEC 参数可配置，不再硬编码
+8. 启动脚本正确调用 wfb_core
+9. 向后兼容选项可用（--legacy）
+10. 所有单元测试和集成测试通过
+
+**Plans:** 7 plans in 6 waves
 
 Plans:
-- [ ] TBD (run /gsd-plan-phase 5 to break down)
+- [ ] 05-00-PLAN.md — wfb_core 单进程入口重构（错误处理、FEC 可配置、线程安全注解）
+- [ ] 05-01-PLAN.md — RX 解复用线程整合（RAII 资源管理、错误处理）
+- [ ] 05-02-PLAN.md — TX 发射线程整合（pcap_inject 重试、帧构建安全）
+- [ ] 05-03-PLAN.md — TUN 读取线程整合（FEC 编码器 RAII、水位线反压）
+- [ ] 05-04-PLAN.md — 服务端调度器线程整合（Token 发射错误处理）
+- [ ] 05-05-PLAN.md — 启动脚本更新（单进程模式、向后兼容）
+- [ ] 05-06-PLAN.md — 集成测试与验证（10 个测试用例、压力测试）
+
+**输出**:
+- `src/wfb_core.cpp` - 单进程主入口
+- `src/config.h` - 配置结构体（FEC 可配置）
+- `src/error_handler.h` - 错误处理框架
+- `src/resource_guard.h` - RAII 资源管理器
+- `src/rx_demux.h/cpp` - RX 线程
+- `src/tx_worker.h/cpp` - TX 线程
+- `src/tun_reader.h/cpp` - TUN 读取线程
+- `src/scheduler_worker.h/cpp` - 调度器线程
+- `scripts/server_start.sh` - 服务端启动脚本（更新）
+- `scripts/client_start.sh` - 客户端启动脚本（更新）
+- `docs/deployment.md` - 部署文档
+- `tests/test_wfb_core.cpp` - 单元测试
+- `tests/integration_test_v2.sh` - 集成测试脚本
+
+**评审反馈整合**:
+- HIGH: 错误处理缺失 → 所有系统调用添加错误处理和重试逻辑
+- HIGH: 内存安全问题 → 使用智能指针管理 pcap 句柄、FEC 编码器、文件描述符
+- MEDIUM: 集成复杂性 → 清晰的线程接口、分步整合、详细文档
+- MEDIUM: 实时优先级反转风险 → 调度器线程优先级 95（低于控制面 99，高于发射端 90）
+- LOW: 硬编码常量 → FEC 参数通过命令行配置（--fec-n, --fec-k）
+- LOW: Token 过期竞争条件 → 使用 mutex 保护 Token 状态更新
 
 ---
 *路线图创建: 2026-04-22*
-*粒度: 粗粒度 | 阶段数: 4 | 需求覆盖: 100%*
+*粒度: 粗粒度 | 阶段数: 5 | 需求覆盖: 100%*
