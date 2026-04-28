@@ -2,14 +2,14 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: 发布就绪（Phase 4 + 全阶段）
-status: milestone_complete
-last_updated: "2026-04-24T09:45:00.000Z"
+status: unknown
+last_updated: "2026-04-28T07:11:04.751Z"
 progress:
-  total_phases: 4
-  completed_phases: 5
+  total_phases: 5
+  completed_phases: 4
   total_plans: 20
-  completed_plans: 16
-  percent: 125
+  completed_plans: 21
+  percent: 100
 ---
 
 # 项目状态：联邦学习无线空口底层传输架构
@@ -141,6 +141,7 @@ progress:
 **目标**: 完成真正的单进程 wfb_core 入口，替换现有的 wfb_tx/wfb_rx/wfb_tun 多进程方案
 
 **问题识别**:
+
 - 当前 wfb_core.cpp 只是一个简单的测试框架，直接退出
 - 启动脚本仍在使用多进程方案（wfb_tx + wfb_rx + wfb_tun）
 - 未实现单进程内的控制/数据面分流
