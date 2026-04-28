@@ -2,6 +2,8 @@
 #include "packet_queue.h"
 #include "radiotap_template.h"
 #include "error_handler.h"
+#include "guard_interval.h"
+#include "threads.h"
 #include <cstring>
 #include <iostream>
 #include <vector>
@@ -135,3 +137,103 @@ int pcap_inject_retry(pcap_t* pcap_handle,
 }
 
 }  // namespace
+TxError tx_main_loop(
+    ThreadSharedState* shared_state,
+    pcap_t* pcap_handle,
+    const TxConfig& config,
+    std::atomic<bool>* shutdown,
+    TxStats* stats
+) {
+    // 参数验证
+    if (!shared_state || !pcap_handle || !shutdown) {
+        return TxError::THREAD_SHUTDOWN;
+    }
+
+    // 初始化 Radiotap 模板
+    RadiotapTemplate rtap_template;
+    rtap_template.init_for_data(config.mcs, config.bandwidth);
+
+    // 批量发射缓冲区
+    std::vector<TxPacket> batch;
+    batch.reserve(config.batch_size);
+
+    // 帧构建缓冲区
+    std::vector<uint8_t> frame;
+    frame.reserve(kMaxFrameLen);
+
+    std::cout << "TX 线程启动，MCS=" << config.mcs 
+              << ", 批量大小=" << config.batch_size << std::endl;
+
+    while (!shutdown->load()) {
+        // 零轮询唤醒：等待 can_send 或 shutdown
+        std::unique_lock<std::mutex> lock(shared_state->mtx);
+        shared_state->cv_send.wait(lock, [&]() {
+            return shared_state->can_send || shutdown->load();
+        });
+
+        if (shutdown->load()) break;
+
+        // 门控检查
+        uint64_t now_ms = get_monotonic_ms();
+        if (!shared_state->can_send || 
+            now_ms >= shared_state->token_expire_time_ms) {
+            // Token 无效或已过期
+            shared_state->can_send = false;
+            continue;
+        }
+
+        // 计算剩余授权时间
+        uint64_t remaining_ms = shared_state->token_expire_time_ms - now_ms;
+
+        // 解锁，准备发射
+        lock.unlock();
+
+        // 批量取包
+        batch.clear();
+        TxPacket pkt;
+        for (uint32_t i = 0; i < config.batch_size; i++) {
+            pkt = extract_packet_from_queue(shared_state->packet_queue);
+            if (pkt.len == 0) break;
+            batch.push_back(std::move(pkt));
+        }
+
+        // 发射数据包
+        for (size_t i = 0; i < batch.size(); i++) {
+            // 检查 Token 是否过期
+            if (get_monotonic_ms() >= shared_state->token_expire_time_ms) {
+                // Token 过期，停止发射
+                if (stats) stats->token_expired++;
+                break;
+            }
+
+            // 构建帧
+            size_t frame_len = build_frame_safe(batch[i], rtap_template, frame);
+            if (frame_len == 0) {
+                if (stats) stats->packets_failed++;
+                continue;
+            }
+
+            // 发射（带重试）
+            int ret = pcap_inject_retry(
+                pcap_handle, 
+                frame.data(), 
+                frame_len,
+                config.inject_retries,
+                config.inject_retry_delay_us
+            );
+
+            if (ret < 0) {
+                if (stats) stats->packets_failed++;
+                continue;
+            }
+
+            if (stats) stats->packets_sent++;
+        }
+
+        // 应用保护间隔（微间隔，避免连续发射拥塞）
+        apply_guard_interval(1);  // 1ms 保护间隔
+    }
+
+    std::cout << "TX 线程正常退出" << std::endl;
+    return TxError::OK;
+}
