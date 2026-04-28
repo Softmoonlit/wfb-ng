@@ -2,6 +2,7 @@
 #include "error_handler.h"
 #include "threads.h"
 #include "rx_demux.h"
+#include "tun_reader.h"
 
 #include <atomic>
 #include <csignal>
@@ -110,12 +111,41 @@ int run_server(const Config& config) {
         }
     });
 
-    // ... 其他线程 ...
+    // TUN 配置（遵循 CLAUDE.md：txqueuelen 设置为 100，极小水池反压）
+    TunConfig tun_config;
+    tun_config.tun_name = config.tun_name;
+    tun_config.txqueuelen = 100;  // 极小水池反压
+    tun_config.fec = config.fec;
+    tun_config.mcs = config.mcs;
+    tun_config.bandwidth = config.bandwidth;
+    tun_config.watermark_window_ms = config.min_window_ms;  // 使用最小窗口作为水位线窗口
+
+    // TUN 统计信息
+    TunStats tun_stats;
+
+    // 启动 TUN 读取线程（遵循 RT-04：保留普通优先级，不设置实时调度）
+    std::thread tun_thread([&]() {
+        // RT-04: TUN 读取线程保留普通优先级（CFS），避免 FEC 编码 CPU 密集型导致系统死机
+        // 不调用 set_thread_realtime_priority()
+        TunError err = tun_reader_main_loop(&shared_state, tun_config,
+                                            &g_shutdown, &tun_stats);
+
+        if (err != TunError::OK) {
+            std::cerr << "TUN 读取线程异常退出: " << static_cast<int>(err) << std::endl;
+        }
+    });
 
     std::cout << "服务端模式运行中，按 Ctrl+C 退出..." << std::endl;
 
     // 等待所有线程
     rx_thread.join();
+    tun_thread.join();
+
+    // 输出统计信息
+    std::cout << "TUN 统计: 读取=" << tun_stats.packets_read.load()
+              << ", 丢弃=" << tun_stats.packets_dropped.load()
+              << ", FEC编码=" << tun_stats.fec_blocks_encoded.load()
+              << ", 反压事件=" << tun_stats.backpressure_events.load() << std::endl;
 
     std::cout << "服务端模式退出" << std::endl;
     return 0;
@@ -148,12 +178,41 @@ int run_client(const Config& config) {
         }
     });
 
-    // ... 其他线程 ...
+// TUN 配置（遵循 CLAUDE.md：txqueuelen 设置为 100，极小水池反压）
+    TunConfig tun_config;
+    tun_config.tun_name = config.tun_name;
+    tun_config.txqueuelen = 100;  // 极小水池反压
+    tun_config.fec = config.fec;
+    tun_config.mcs = config.mcs;
+    tun_config.bandwidth = config.bandwidth;
+    tun_config.watermark_window_ms = config.min_window_ms;  // 使用最小窗口作为水位线窗口
+
+    // TUN 统计信息
+    TunStats tun_stats;
+
+    // 启动 TUN 读取线程（遵循 RT-04：保留普通优先级，不设置实时调度）
+    std::thread tun_thread([&]() {
+        // RT-04: TUN 读取线程保留普通优先级（CFS），避免 FEC 编码 CPU 密集型导致系统死机
+        // 不调用 set_thread_realtime_priority()
+        TunError err = tun_reader_main_loop(&shared_state, tun_config,
+                                            &g_shutdown, &tun_stats);
+
+        if (err != TunError::OK) {
+            std::cerr << "TUN 读取线程异常退出: " << static_cast<int>(err) << std::endl;
+        }
+    });
 
     std::cout << "客户端模式运行中，按 Ctrl+C 退出..." << std::endl;
 
     // 等待所有线程
     rx_thread.join();
+    tun_thread.join();
+
+    // 输出统计信息
+    std::cout << "TUN 统计: 读取=" << tun_stats.packets_read.load()
+              << ", 丢弃=" << tun_stats.packets_dropped.load()
+              << ", FEC编码=" << tun_stats.fec_blocks_encoded.load()
+              << ", 反压事件=" << tun_stats.backpressure_events.load() << std::endl;
 
     std::cout << "客户端模式退出" << std::endl;
     return 0;
