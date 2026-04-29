@@ -90,27 +90,31 @@ ParseResult parse_frame(
 }  // namespace
 
 pcap_t* init_pcap_handle(const char* interface, int channel, char* error_buf) {
-    // 1. 创建 pcap 句柄
-    pcap_t* pcap = pcap_create(interface, error_buf);
+    // 方法1: 尝试使用 pcap_open_live（适用于已被外部设置为 monitor 模式的网卡）
+    // snaplen=65535, promisc=1, to_ms=10ms
+    pcap_t* pcap = pcap_open_live(interface, 65535, 1, 10, error_buf);
+    if (pcap) {
+        // 设置非阻塞模式
+        if (pcap_setnonblock(pcap, 1, error_buf) == 0) {
+            return pcap;
+        }
+        // 非阻塞设置失败，但可以继续使用
+        return pcap;
+    }
+
+    // 方法2: 如果 pcap_open_live 失败，尝试使用 pcap_create 方式
+    pcap = pcap_create(interface, error_buf);
     if (!pcap) {
         return nullptr;
     }
 
-    // 2. 设置 Monitor 模式
+    // 尝试设置 Monitor 模式
     int ret = pcap_set_rfmon(pcap, 1);
-    if (ret != 0) {
-        pcap_close(pcap);
-        snprintf(error_buf, PCAP_ERRBUF_SIZE, "无法设置 Monitor 模式");
-        return nullptr;
-    }
+    // 不检查返回值，继续尝试激活
 
-    // 3. 设置超时
     pcap_set_timeout(pcap, 10);  // 10ms
-
-    // 4. 设置缓冲区大小
     pcap_set_buffer_size(pcap, 2 * 1024 * 1024);  // 2MB
 
-    // 5. 激活
     ret = pcap_activate(pcap);
     if (ret != 0) {
         pcap_close(pcap);
@@ -119,9 +123,7 @@ pcap_t* init_pcap_handle(const char* interface, int channel, char* error_buf) {
         return nullptr;
     }
 
-    // 6. 设置非阻塞模式（可选，便于检查 shutdown）
     pcap_setnonblock(pcap, 1, error_buf);
-
     return pcap;
 }
 
