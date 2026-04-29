@@ -46,19 +46,19 @@ run_test "编译测试程序" "make test_wfb_core"
 echo ""
 echo "=== 2. 单元测试 ==="
 
-run_test "运行单元测试" "./tests/test_wfb_core"
+run_test "运行单元测试" "./test_wfb_core"
 
 # === 3. 命令行参数测试 ===
 echo ""
 echo "=== 3. 命令行参数测试 ==="
 
-run_test "显示帮助信息" "./build/wfb_core --help | grep -q '用法'"
+run_test "显示帮助信息" "./wfb_core --help | grep -q '用法'"
 
-run_test "验证服务端参数" "./build/wfb_core --mode server -i wlan0 -c 6 -m 0 --help | grep -q 'server'"
+run_test "验证服务端参数" "./wfb_core --mode server -i wlan0 -c 6 -m 0 --help | grep -q 'server'"
 
-run_test "验证客户端参数" "./build/wfb_core --mode client -i wlan0 -c 6 -m 0 --node-id 1 --help | grep -q 'client'"
+run_test "验证客户端参数" "./wfb_core --mode client -i wlan0 -c 6 -m 0 --node-id 1 --help | grep -q 'client'"
 
-run_test "验证 FEC 参数" "./build/wfb_core --mode server -i wlan0 --fec-n 16 --fec-k 10 --help | grep -q 'fec'"
+run_test "验证 FEC 参数" "./wfb_core --mode server -i wlan0 --fec-n 16 --fec-k 10 --help | grep -q 'fec'"
 
 # === 4. 权限检查 ===
 echo ""
@@ -86,12 +86,12 @@ else
 
     # 启动服务端（后台，2 秒后终止）
     echo "[5.1] 启动服务端..."
-    timeout 2 ./build/wfb_core --mode server -i "$WIFI_IFACE" -c 6 -m 0 --tun wfb0 2>&1 || true
+    timeout 2 ./wfb_core --mode server -i "$WIFI_IFACE" -c 6 -m 0 --tun wfb0 2>&1 || true
     echo "✓ 服务端启动测试完成"
 
     # 启动客户端（后台，2 秒后终止）
     echo "[5.2] 启动客户端..."
-    timeout 2 ./build/wfb_core --mode client -i "$WIFI_IFACE" -c 6 -m 0 --tun wfb1 --node-id 1 2>&1 || true
+    timeout 2 ./wfb_core --mode client -i "$WIFI_IFACE" -c 6 -m 0 --tun wfb1 --node-id 1 2>&1 || true
     echo "✓ 客户端启动测试完成"
 
     # === 6. 启动脚本测试 ===
