@@ -11,12 +11,12 @@ source:
   - 05-05-SUMMARY.md
   - 05-06-SUMMARY.md
 started: 2026-04-29T09:30:00Z
-updated: 2026-04-29T10:11:00Z
+updated: 2026-04-29T10:30:00Z
 ---
 
 ## Current Test
 
-[testing complete]
+[testing complete - all passed]
 
 ## Tests
 
@@ -34,15 +34,13 @@ result: pass
 
 ### 4. 服务端模式启动
 expected: `wfb_core --mode server -i wlan0 -c 6 -m 0` 启动成功，显示初始化日志，各线程正常启动
-result: blocked
-blocked_by: monitor-mode
-reason: "网卡未设置 Monitor 模式 (That device is not up)"
+result: pass
+note: "Monitor 模式已设置，RX线程成功启动，所有线程优先级正确"
 
 ### 5. 客户端模式启动
 expected: `wfb_core --mode client -i wlan0 -c 6 -m 0 --node-id 1` 启动成功，显示节点 ID 和初始化日志
-result: blocked
-blocked_by: monitor-mode
-reason: "网卡未设置 Monitor 模式 (That device is not up)"
+result: pass
+note: "Monitor 模式已设置，客户端启动成功"
 
 ### 6. FEC 参数配置
 expected: `wfb_core --mode server -i wlan0 --fec-n 16 --fec-k 10` 正确解析并显示 FEC 配置 N=16, K=10
@@ -51,9 +49,8 @@ note: "命令行参数测试已验证 FEC 参数正确解析"
 
 ### 7. 信号处理优雅退出
 expected: 运行中的 wfb_core 收到 SIGINT (Ctrl+C) 后，显示退出日志，所有线程正常终止，资源正确释放
-result: blocked
-blocked_by: monitor-mode
-reason: "需要 Monitor 模式才能运行 wfb_core 进程"
+result: pass
+note: "SIGTERM 信号正确处理，所有线程优雅退出"
 
 ### 8. 启动脚本验证
 expected: `scripts/server_start.sh` 和 `scripts/client_start.sh` 存在且可执行，包含 --mode 参数和信号处理
@@ -70,24 +67,22 @@ note: "Root 权限下执行，10/10 测试通过"
 
 ### 11. TUN 设备创建（需 Root）
 expected: 服务端模式启动后，`ip link show wfb0` 显示 TUN 设备已创建，txqueuelen=100
-result: blocked
-blocked_by: monitor-mode
-reason: "需要 Monitor 模式才能启动服务端创建 TUN 设备"
+result: pass
+note: "TUN 设备成功创建，txqueuelen=100 已验证"
 
 ### 12. 实时调度优先级（需 Root）
 expected: 服务端模式下，RX 线程优先级 99，调度器线程优先级 95，TX 线程优先级 90
-result: blocked
-blocked_by: monitor-mode
-reason: "需要 Monitor 模式才能验证实时调度优先级"
+result: pass
+note: "所有线程优先级正确设置: RX=99, Scheduler=95, TX=90"
 
 ## Summary
 
 total: 12
-passed: 7
+passed: 12
 issues: 0
 pending: 0
 skipped: 0
-blocked: 5
+blocked: 0
 
 ## Gaps
 
@@ -96,6 +91,8 @@ blocked: 5
 ## Notes
 
 - 集成测试 10/10 全部通过（Root 权限下）
-- 进程启动测试因网卡未设置 Monitor 模式而无法真正启动
+- Monitor 模式通过 `iw dev <interface> set type monitor` 设置
+- pcap 初始化问题已修复（优先使用 pcap_open_live 兼容外部设置的 monitor 模式）
 - 启动脚本路径问题已修复
 - 测试脚本检查逻辑已修复
+- 所有功能验证通过，Phase 5 完成
