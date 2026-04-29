@@ -11,7 +11,7 @@ source:
   - 05-05-SUMMARY.md
   - 05-06-SUMMARY.md
 started: 2026-04-29T09:30:00Z
-updated: 2026-04-29T09:55:00Z
+updated: 2026-04-29T10:00:00Z
 ---
 
 ## Current Test
@@ -66,9 +66,8 @@ result: pass
 
 ### 10. 集成测试脚本执行
 expected: `tests/integration_test_v2.sh` 执行完成，显示测试总结（部分测试可能因权限跳过）
-result: issue
-reported: "脚本中路径错误：单元测试路径 ./tests/test_wfb_core 应为 ./test_wfb_core；wfb_core 路径 ./build/wfb_core 应为 ./wfb_core"
-severity: minor
+result: pass
+note: "已修复路径错误，所有 10 个测试在非 Root 环境下通过"
 
 ### 11. TUN 设备创建（需 Root）
 expected: 服务端模式启动后，`ip link show wfb0` 显示 TUN 设备已创建，txqueuelen=100
@@ -85,19 +84,12 @@ reason: "需要 Root 权限和 Monitor 模式才能验证实时调度优先级"
 ## Summary
 
 total: 12
-passed: 5
-issues: 1
+passed: 6
+issues: 0
 pending: 0
 skipped: 0
 blocked: 6
 
 ## Gaps
 
-- truth: "集成测试脚本执行成功，路径正确"
-  status: failed
-  reason: "脚本中路径错误：单元测试路径 ./tests/test_wfb_core 应为 ./test_wfb_core；wfb_core 路径 ./build/wfb_core 应为 ./wfb_core"
-  severity: minor
-  test: 10
-  root_cause: ""
-  artifacts: []
-  missing: []
+[none]
