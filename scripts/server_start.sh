@@ -6,7 +6,7 @@
 set -e
 
 # === 配置区 ===
-WFB_CORE_BIN="./build/wfb_core"
+WFB_CORE_BIN="./wfb_core"
 PID_FILE="/var/run/wfb_core_server.pid"
 LOG_FILE="/var/log/wfb_core_server.log"
 

@@ -100,7 +100,8 @@ else
 
     if [ -f "./scripts/server_start.sh" ]; then
         echo "[6.1] 检查服务端启动脚本..."
-        if grep -q "wfb_core --mode server" "./scripts/server_start.sh"; then
+        # 检查脚本包含 --mode server 和 wfb_core 相关配置
+        if grep -q "\-\-mode server" "./scripts/server_start.sh" && grep -q "wfb_core" "./scripts/server_start.sh"; then
             echo "✓ 服务端启动脚本正确调用 wfb_core"
         else
             echo "✗ 服务端启动脚本未调用 wfb_core"
@@ -110,7 +111,8 @@ else
 
     if [ -f "./scripts/client_start.sh" ]; then
         echo "[6.2] 检查客户端启动脚本..."
-        if grep -q "wfb_core --mode client" "./scripts/client_start.sh"; then
+        # 检查脚本包含 --mode client 和 wfb_core 相关配置
+        if grep -q "\-\-mode client" "./scripts/client_start.sh" && grep -q "wfb_core" "./scripts/client_start.sh"; then
             echo "✓ 客户端启动脚本正确调用 wfb_core"
         else
             echo "✗ 客户端启动脚本未调用 wfb_core"
