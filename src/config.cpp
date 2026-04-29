@@ -20,43 +20,69 @@ bool Config::validate() const {
         return false;
     }
 
+    // Gap-12: node_id 范围验证
+    if (mode == Mode::CLIENT && node_id > 255) {
+        std::cerr << "错误: 节点 ID 超出范围 (1-255)" << std::endl;
+        return false;
+    }
+
+    if (mode == Mode::SERVER && node_id > 0) {
+        std::cerr << "警告: 服务端模式忽略 node-id 参数" << std::endl;
+    }
+
+    // Gap-11: node_count 范围验证
+    if (mode == Mode::SERVER && (node_count < 1 || node_count > 255)) {
+        std::cerr << "错误: 节点数超出范围 (1-255)" << std::endl;
+        return false;
+    }
+
     return true;
 }
 
 bool parse_arguments(int argc, char** argv, Config& config) {
     static struct option long_options[] = {
-        {"mode",     required_argument, nullptr, 'M'},
-        {"tun",      required_argument, nullptr, 'T'},
-        {"bw",       required_argument, nullptr, 'B'},
-        {"node-id",  required_argument, nullptr, 'N'},
-        {"fec-n",    required_argument, nullptr, 'F'},
-        {"fec-k",    required_argument, nullptr, 'K'},
-        {"help",     no_argument,       nullptr, 'h'},
-        {nullptr,    0,                 nullptr, 0}
+        {"mode",       required_argument, nullptr, 'M'},
+        {"tun",        required_argument, nullptr, 'T'},
+        {"bw",         required_argument, nullptr, 'B'},
+        {"node-id",    required_argument, nullptr, 'N'},
+        {"node-count", required_argument, nullptr, 'C'},
+        {"fec-n",      required_argument, nullptr, 'F'},
+        {"fec-k",      required_argument, nullptr, 'K'},
+        {"help",       no_argument,       nullptr, 'h'},
+        {nullptr,      0,                 nullptr, 0}
     };
 
     int opt;
     while ((opt = getopt_long(argc, argv, "i:c:m:vh", long_options, nullptr)) != -1) {
-        switch (opt) {
-            case 'i': config.interface = optarg; break;
-            case 'c': config.channel = std::stoi(optarg); break;
-            case 'm': config.mcs = std::stoi(optarg); break;
-            case 'v': config.verbose = true; break;
-            case 'M':
-                config.mode = (std::string(optarg) == "server")
-                              ? Config::Mode::SERVER
-                              : Config::Mode::CLIENT;
-                break;
-            case 'T': config.tun_name = optarg; break;
-            case 'B': config.bandwidth = std::stoi(optarg); break;
-            case 'N': config.node_id = static_cast<uint8_t>(std::stoi(optarg)); break;
-            case 'F': config.fec.n = std::stoi(optarg); break;
-            case 'K': config.fec.k = std::stoi(optarg); break;
-            case 'h':
-                print_usage(argv[0]);
-                exit(0);
-            default:
-                return false;
+        try {
+            switch (opt) {
+                case 'i': config.interface = optarg; break;
+                case 'c': config.channel = std::stoi(optarg); break;
+                case 'm': config.mcs = std::stoi(optarg); break;
+                case 'v': config.verbose = true; break;
+                case 'M':
+                    config.mode = (std::string(optarg) == "server")
+                                  ? Config::Mode::SERVER
+                                  : Config::Mode::CLIENT;
+                    break;
+                case 'T': config.tun_name = optarg; break;
+                case 'B': config.bandwidth = std::stoi(optarg); break;
+                case 'N': config.node_id = static_cast<uint8_t>(std::stoi(optarg)); break;
+                case 'C': config.node_count = std::stoi(optarg); break;
+                case 'F': config.fec.n = std::stoi(optarg); break;
+                case 'K': config.fec.k = std::stoi(optarg); break;
+                case 'h':
+                    print_usage(argv[0]);
+                    exit(0);
+                default:
+                    return false;
+            }
+        } catch (const std::invalid_argument& e) {
+            std::cerr << "错误: 参数值无效 - " << optarg << std::endl;
+            return false;
+        } catch (const std::out_of_range& e) {
+            std::cerr << "错误: 参数值超出范围 - " << optarg << std::endl;
+            return false;
         }
     }
 
@@ -73,6 +99,8 @@ void print_usage(const char* program_name) {
               << "  -m <MCS>                MCS 调制方案 0-8（默认: 0）\n"
               << "  --bw <MHz>              频宽 20/40（默认: 20）\n"
               << "  --tun <名称>            TUN 设备名（默认: wfb0）\n\n"
+              << "服务端参数:\n"
+              << "  --node-count <数量>     节点数量 1-255（默认: 10）\n\n"
               << "客户端参数:\n"
               << "  --node-id <ID>          节点 ID 1-255（客户端必需）\n\n"
               << "FEC 参数:\n"

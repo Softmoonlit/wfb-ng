@@ -166,27 +166,39 @@ TxError tx_main_loop(
 
     while (!shutdown->load()) {
         // 零轮询唤醒：等待 can_send 或 shutdown
-        std::unique_lock<std::mutex> lock(shared_state->mtx);
-        shared_state->cv_send.wait(lock, [&]() {
-            return shared_state->can_send || shutdown->load();
-        });
+        bool can_send = false;
+        uint64_t expire_time_ms = 0;
 
-        if (shutdown->load()) break;
+        {
+            std::unique_lock<std::mutex> lock(shared_state->mtx);
+            shared_state->cv_send.wait(lock, [&]() {
+                return shared_state->can_send || shutdown->load();
+            });
+
+            if (shutdown->load()) break;
+
+            // 在锁内复制需要的数据
+            can_send = shared_state->can_send;
+            expire_time_ms = shared_state->token_expire_time_ms;
+
+            if (!can_send) {
+                continue;
+            }
+        } // 锁在此处释放
+
+        // 获取时间（无锁状态下调用外部函数）
+        uint64_t now_ms = get_monotonic_ms();
 
         // 门控检查
-        uint64_t now_ms = get_monotonic_ms();
-        if (!shared_state->can_send || 
-            now_ms >= shared_state->token_expire_time_ms) {
+        if (!can_send || now_ms >= expire_time_ms) {
             // Token 无效或已过期
+            std::lock_guard<std::mutex> lock(shared_state->mtx);
             shared_state->can_send = false;
             continue;
         }
 
         // 计算剩余授权时间
-        uint64_t remaining_ms = shared_state->token_expire_time_ms - now_ms;
-
-        // 解锁，准备发射
-        lock.unlock();
+        uint64_t remaining_ms = expire_time_ms - now_ms;
 
         // 批量取包
         batch.clear();

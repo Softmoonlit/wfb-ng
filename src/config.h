@@ -29,6 +29,7 @@ struct Config {
     int bandwidth = 20;         // --bw 20 (MHz)
     std::string tun_name = "wfb0";  // --tun wfb0
     uint8_t node_id = 0;        // --node-id 1 (client only)
+    int node_count = 10;        // --node-count 10 (server only, 1-255)
 
     // FEC 参数（可配置）
     FECConfig fec;
